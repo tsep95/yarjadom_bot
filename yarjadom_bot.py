@@ -66,7 +66,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
     await update.message.reply_text(
-        Привет. Я рядом. 🤗
+        "Привет. Я рядом. 🤗
 "
         "Тёплый психологический помощник, с которым можно просто поговорить. 🧸
 
@@ -84,7 +84,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔒 Бот полностью анонимный — ты можешь быть собой.
 
 "
-        "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬
+        "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
