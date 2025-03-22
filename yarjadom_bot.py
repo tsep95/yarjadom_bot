@@ -36,6 +36,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = response.choices[0].message.content.strip()
         await update.message.reply_text(reply)
     except Exception as e:
+        print("❌ Ошибка GPT:", e)  # ← вот это покажет причину сбоя в логах Railway
         await update.message.reply_text("Что-то пошло не так. Попробуй позже 🫶")
 
 if __name__ == "__main__":
