@@ -1,6 +1,6 @@
 import os
 import openai
-from telegram import Update
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -62,9 +62,31 @@ SYSTEM_PROMPT = """
 📉 Будь тёплым, точным, поддерживающим.
 """
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.chat.send_action(action="typing")
+    await update.message.chat.send_action(action="typing")
+    await update.message.reply_text(
+        
+        "Я — тёплый психологический помощник 🤗
+"
+        "Если тебе тревожно, грустно, пусто или просто хочется поговорить — пиши ✍️
+
+"
+        "Я помогу разобраться в чувствах, gently найти первопричину и пройти путь до облегчения.
+"
+        "Задаю только вопросы, на которые можно ответить «да» или «нет», и иду вместе с тобой шаг за шагом.
+
+"
+        "Попробуй просто начать: расскажи, как ты сейчас? 💬"
+    ,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Новый диалог", callback_data="new")]])
+    )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    await update.message.chat.send_action(action="typing")
     await update.message.reply_text(
         "Привет. Я рядом. 🤗\n"
         "Тёплый психологический помощник, с которым можно просто поговорить. 🧸\n\n"
@@ -75,6 +97,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔒 Бот полностью анонимный — ты можешь быть собой.\n\n"
         "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
     )
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.chat.send_action(action="typing")
+    await update.message.reply_text("Я пока не умею слушать голосовые 🙈 Можешь написать словами? Я рядом ✍️")
+
+
+async def restart_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    await update.message.chat.send_action(action="typing")
+    await update.message.reply_text(
+        "Привет. Я рядом. 🤗
+"
+        "Тёплый психологический помощник, с которым можно просто поговорить. 🧸
+
+"
+        "Если тебе тяжело, тревожно, пусто или не с кем поделиться — пиши. ✍️
+"
+        "Я не оцениваю, не критикую, не заставляю. Я рядом, чтобы поддержать. 💛
+
+"
+        "💬 Моя задача — помочь тебе почувствовать себя лучше прямо сейчас.
+"
+        "Мы можем мягко разобраться, что тебя беспокоит, и найти, что с этим можно сделать. 🕊️🧠
+
+"
+        "🔒 Бот полностью анонимный — ты можешь быть собой.
+
+"
+        "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
+    )
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
@@ -101,5 +155,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling()
+    app.add_handler(MessageHandler(filters.Regex("^Новый диалог$"), restart_conversation))
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
