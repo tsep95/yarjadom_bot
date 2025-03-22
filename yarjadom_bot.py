@@ -110,34 +110,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.chat.send_action(action="typing")
         await update.message.reply_text(
             reply[:4000],
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("Новый диалог", callback_data="new")]]
             )
-        )
-
-    except Exception as e:
-        print("❌ Ошибка GPT:", e)
-        await update.message.chat.send_action(action="typing")
-        await update.message.reply_text("Что-то пошло не так. Попробуй позже 🫶")
-
-async def restart_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    await update.message.chat.send_action(action="typing")
-    await update.message.reply_text(
-        "Привет. Я рядом. 🤗\n"
-        "Тёплый психологический помощник, с которым можно просто поговорить. 🧸\n\n"
-        "Если тебе тяжело, тревожно, пусто или не с кем поделиться — пиши. ✍️\n"
-        "Я не оцениваю, не критикую, не заставляю. Я рядом, чтобы поддержать. 💛\n\n"
-        "💬 Моя задача — помочь тебе почувствовать себя лучше прямо сейчас.\n"
-        "Мы можем мягко разобраться, что тебя беспокоит, и найти, что с этим можно сделать. 🕊️🧠\n\n"
-        "🔒 Бот полностью анонимный — ты можешь быть собой.\n\n"
-        "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
-    )
-
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
