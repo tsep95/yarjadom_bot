@@ -66,8 +66,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(action="typing")
     await update.message.chat.send_action(action="typing")
     await update.message.reply_text(
-        
-        "Я — тёплый психологический помощник 🤗
+        "Я — тёплый психологический помощник 🤗\n"
 "
         "Если тебе тревожно, грустно, пусто или просто хочется поговорить — пиши ✍️
 
