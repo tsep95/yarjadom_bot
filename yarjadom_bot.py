@@ -150,6 +150,8 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    import asyncio
-    asyncio.run(set_bot_commands(app))
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+   import asyncio
+
+if __name__ == "__main__":
+    asyncio.get_event_loop().run_until_complete(app.run_polling(allowed_updates=Update.ALL_TYPES))
+
