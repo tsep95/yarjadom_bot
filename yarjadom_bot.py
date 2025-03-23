@@ -14,9 +14,9 @@ from pydub import AudioSegment
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# Клавиатура с режимами
+# Клавиатура с режимами (убрана кнопка "Создать медитацию")
 KEYBOARD = ReplyKeyboardMarkup(
-    keyboard=[["Понять себя"], ["Беседа"], ["Создать медитацию"]],
+    keyboard=[["Понять себя"], ["Беседа"]],
     resize_keyboard=True,
     one_time_keyboard=False,
     input_field_placeholder="Выбери режим"
@@ -104,10 +104,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
 
-    if user_input == "Создать медитацию":
-        await create_audio_meditation(update, context)
-        return
-
     if "history" not in context.user_data:
         context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -128,44 +124,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("❌ Ошибка GPT:", e)
         await update.message.chat.send_action(action="typing")
         await update.message.reply_text("Что-то пошло не так. Попробуй позже 🫶")
-
-async def create_audio_meditation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Хорошо 😊 Расскажи, что тебя беспокоит или в чём хочешь получить поддержку?")
-
-    response = await context.bot.wait_for_message(chat_id=update.effective_chat.id, timeout=60)
-    if not response:
-        await update.message.reply_text("Кажется, ты не ответил... Попробуем позже? 🌿")
-        return
-
-    user_prompt = response.text.strip()
-    prompt = f"Создай короткую аудиомедитацию (около 1 минуты) для человека, который сейчас переживает следующее: {user_prompt}. Сделай её мягкой, тёплой, с поддержкой. Заверши медитацию на светлой ноте."
-
-    await update.message.reply_text("Готовлю текст медитации… 🧘")
-
-    chat_response = openai.ChatCompletion.create(
-        model="gpt-4-1106-preview",
-        messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-        temperature=0.8
-    )
-    meditation_text = chat_response.choices[0].message.content.strip()
-
-    await update.message.reply_text("Озвучиваю медитацию… 🎙️")
-
-    audio_response = openai.audio.speech.create(
-        model="tts-1",
-        voice="nova",
-        input=meditation_text
-    )
-
-    with open("voice.mp3", "wb") as f:
-        f.write(audio_response.content)
-
-    background_music = AudioSegment.from_file("calm_music.mp3") - 12
-    voice = AudioSegment.from_file("voice.mp3")
-    combined = background_music.overlay(voice)
-    combined.export("meditation_ready.mp3", format="mp3")
-
-    await update.message.reply_audio(audio=open("meditation_ready.mp3", "rb"), caption="Вот твоя медитация ✨")
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
