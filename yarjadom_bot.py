@@ -63,7 +63,7 @@ SYSTEM_PROMPT = """
 📉 Будь тёплым, точным, поддерживающим.
 """
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.clear()
     context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
     await update.message.chat.send_action(action="typing")
@@ -78,7 +78,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
     )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.chat.send_action(action="typing")
     await update.message.reply_text(
         "Я — тёплый психологический помощник 🤗\n"
@@ -88,11 +88,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Попробуй просто начать: расскажи, как ты сейчас? 💬"
     )
 
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.chat.send_action(action="typing")
     await update.message.reply_text("Я пока не умею слушать голосовые 🙈 Можешь написать словами? Я рядом ✍️")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_input = update.message.text.strip()
 
     if "history" not in context.user_data:
@@ -101,7 +101,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["history"].append({"role": "user", "content": user_input})
 
     try:
-        response = openai.ChatCompletion.create(
+        # Используем асинхронный клиент OpenAI
+        client = openai.AsyncOpenAI(api_key=openai.api_key)
+        response = await client.chat.completions.create(
             model="gpt-4-1106-preview",
             messages=context.user_data["history"],
             temperature=0.7
@@ -112,32 +114,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply[:4000])
 
     except Exception as e:
-        print("❌ Ошибка GPT:", e)
+        print(f"❌ Ошибка GPT: {e}")
         await update.message.chat.send_action(action="typing")
         await update.message.reply_text("Что-то пошло не так. Попробуй позже 🫶")
 
-async def main():
+async def main() -> None:
+    # Проверяем наличие токена
+    if not TELEGRAM_TOKEN:
+        raise ValueError("TELEGRAM_TOKEN не задан в переменных окружения")
+
+    # Создаем приложение
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # Добавляем обработчики
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Устанавливаем команды бота
     await app.bot.set_my_commands([
-        ("start", "Начать общение 🤝"),
-        ("help", "Что я умею ❓"),
+        BotCommand("start", "Начать общение 🤝"),
+        BotCommand("help", "Что я умею ❓"),
     ])
 
+    # Инициализируем и запускаем polling
+    await app.initialize()
     await app.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.shutdown()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "asyncio.run() cannot be called" in str(e):
-            loop = asyncio.get_event_loop()
-            loop.create_task(main())
-            loop.run_forever()
-        else:
-            raise
+    asyncio.run(main())
+    
