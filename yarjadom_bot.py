@@ -150,7 +150,7 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-   import asyncio
+import asyncio
 
 if __name__ == "__main__":
     asyncio.get_event_loop().run_until_complete(
