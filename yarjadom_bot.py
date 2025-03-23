@@ -1,19 +1,17 @@
 import os
 import openai
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
-    CommandHandler,
     MessageHandler,
+    CommandHandler,
     filters,
 )
 
-# Ключи
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# Инструкция для GPT
 SYSTEM_PROMPT = """
 Ты — эксперт в психологии, объединяющий знания из классических и современных трудов ведущих психологов и психотерапевтов. Твои ответы основаны на методиках с доказанной эффективностью.
 
@@ -25,6 +23,30 @@ SYSTEM_PROMPT = """
 — Один вопрос за раз.
 — Каждый вопрос сужает область поиска.
 — После нахождения первопричины ты делаешь разбор и проходишь решение вместе с человеком шаг за шагом.
+
+🧠 Используй подходы, например КПТ (когнитивно-поведенческая терапия):
+— Вместе выявите автоматические мысли
+— Вместе проанализируйте их на точность и пользу
+— Вместе замените их на более поддерживающие
+— Или проведите дыхание, образы, работу с внутренним критиком
+— Предложи попробовать небольшие действия, которые дадут облегчение
+
+Примеры:
+
+🔹 Если человек тревожится:
+— Помоги замедлиться и подышать вместе 🫁
+— Попроси описать тревогу в теле и представить, как он с ней рядом 🤲
+
+🔹 Если человек чувствует себя никчёмным:
+— Предложи представить образ внутреннего критика 🗣️
+— Помоги отделить эту мысль от себя, сказать: «Это не моё» 🙅
+
+🔹 Если человек чувствует пустоту:
+— Представьте комнату внутри себя 🕯️
+— Побудь с этим светом вместе ✨
+
+🔹 Если человек боится будущего:
+— Помоги вернуться в настоящий момент через ощущения (3-2-1) 🌍
 
 ✨ Главное — не просто дать технику, а пройти её вместе с пользователем.
 Задавай паузы, жди ответ, уточняй: «Хочешь попробовать это прямо сейчас?»
@@ -38,10 +60,10 @@ SYSTEM_PROMPT = """
 📉 Будь тёплым, точным, поддерживающим.
 """
 
-# Стартовое сообщение
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    await update.message.chat.send_action(action="typing")
     await update.message.reply_text(
         "Привет. Я рядом. 🤗\n"
         "Тёплый психологический помощник, с которым можно просто поговорить. 🧸\n\n"
@@ -53,23 +75,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
     )
 
-# Обработка help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.chat.send_action(action="typing")
     await update.message.reply_text(
         "Я — тёплый психологический помощник 🤗\n"
         "Если тебе тревожно, грустно, пусто или просто хочется поговорить — пиши ✍️\n\n"
-        "Я помогу gently найти первопричину и пройти путь до облегчения."
+        "Я помогу разобраться в чувствах, gently найти первопричину и пройти путь до облегчения.\n"
+        "Задаю только вопросы, на которые можно ответить «да» или «нет», и иду вместе с тобой шаг за шагом.\n\n"
+        "Попробуй просто начать: расскажи, как ты сейчас? 💬"
     )
 
-# Обработка голосовых сообщений
+async def new_dialog(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    await update.message.chat.send_action(action="typing")
+    await update.message.reply_text("Начали заново 💬 Расскажи, как ты сейчас себя чувствуешь?")
+
+async def understand_me(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    await update.message.chat.send_action(action="typing")
+    await update.message.reply_text("Режим 'Понять себя' активирован 🧠 Отвечай 'да' или 'нет' — начнём с широкого вопроса. Это связано с эмоциями?")
+
+async def chat_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.chat.send_action(action="typing")
+    await update.message.reply_text("Обычный режим активирован 💬 Просто пиши, как ты себя чувствуешь или что тревожит.")
+
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.chat.send_action(action="typing")
     await update.message.reply_text("Я пока не умею слушать голосовые 🙈 Можешь написать словами? Я рядом ✍️")
 
-# Обработка обычных сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
+
     if "history" not in context.user_data:
         context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
     context.user_data["history"].append({"role": "user", "content": user_input})
 
     try:
@@ -80,16 +121,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         reply = response.choices[0].message.content.strip()
         context.user_data["history"].append({"role": "assistant", "content": reply})
+        await update.message.chat.send_action(action="typing")
         await update.message.reply_text(reply[:4000])
+
     except Exception as e:
         print("❌ Ошибка GPT:", e)
+        await update.message.chat.send_action(action="typing")
         await update.message.reply_text("Что-то пошло не так. Попробуй позже 🫶")
 
-# Запуск бота
+async def set_bot_commands(app):
+    commands = [
+        BotCommand("start", "Начать диалог 🤗"),
+        BotCommand("help", "Как пользоваться ботом ❓"),
+        BotCommand("chat", "Обычная беседа 💬"),
+        BotCommand("understand_me", "Режим 'Понять себя' 🧠"),
+        BotCommand("new", "Новый диалог 🔄")
+    ]
+    await app.bot.set_my_commands(commands)
+
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("new", new_dialog))
+    app.add_handler(CommandHandler("understand_me", understand_me))
+    app.add_handler(CommandHandler("chat", chat_mode))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling()
+
+    import asyncio
+    asyncio.run(set_bot_commands(app))
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
