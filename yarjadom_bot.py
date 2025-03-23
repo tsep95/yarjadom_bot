@@ -17,7 +17,10 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 # Клавиатура с режимами
 KEYBOARD = ReplyKeyboardMarkup(
-    [["Понять себя"], ["Беседа"], ["Создать медитацию"]], resize_keyboard=True
+    keyboard=[["Понять себя"], ["Беседа"], ["Создать медитацию"]],
+    resize_keyboard=True,
+    one_time_keyboard=False,
+    input_field_placeholder="Выбери режим"
 )
 
 # Инструкция для GPT
@@ -116,7 +119,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = response.choices[0].message.content.strip()
         context.user_data["history"].append({"role": "assistant", "content": reply})
         await update.message.chat.send_action(action="typing")
-        await update.message.reply_text(reply[:4000])
+        await update.message.reply_text(reply[:4000], reply_markup=KEYBOARD)
 
     except Exception as e:
         print("❌ Ошибка GPT:", e)
