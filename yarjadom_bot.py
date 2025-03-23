@@ -1,6 +1,6 @@
 import os
-import asyncio
 import openai
+import asyncio
 from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder,
@@ -63,16 +63,6 @@ SYSTEM_PROMPT = """
 📉 Будь тёплым, точным, поддерживающим.
 """
 
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-async def set_bot_commands(bot):
-    await bot.set_my_commands([
-        BotCommand("start", "Начать общение"),
-        BotCommand("help", "Что я умею"),
-        BotCommand("ponyatsebya", "Режим 'Понять себя'"),
-        BotCommand("beseda", "Обычный режим"),
-    ])
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -126,12 +116,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.chat.send_action(action="typing")
         await update.message.reply_text("Что-то пошло не так. Попробуй позже 🫶")
 
-if __name__ == "__main__":
-    async def main():
-        await set_bot_commands(app.bot)
-        await app.initialize()
-        await app.start()
-        await app.updater.start_polling()
-        await app.updater.idle()
+async def main():
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    asyncio.run(main())
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    await app.bot.set_my_commands([
+        ("start", "Начать общение 🤝"),
+        ("help", "Что я умею ❓"),
+    ])
+
+    await app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "asyncio.run() cannot be called" in str(e):
+            loop = asyncio.get_event_loop()
+            loop.create_task(main())
+            loop.run_forever()
+        else:
+            raise
