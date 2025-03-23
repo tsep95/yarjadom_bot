@@ -153,5 +153,6 @@ if __name__ == "__main__":
    import asyncio
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(app.run_polling(allowed_updates=Update.ALL_TYPES))
-
+    asyncio.get_event_loop().run_until_complete(
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
+    )
