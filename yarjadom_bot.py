@@ -144,4 +144,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("beseda", beseda_command))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling(allowed_updates=Update.ALL_TYPES, on_startup=set_bot_commands)
+
+    import asyncio
+    asyncio.run(set_bot_commands(app))
+
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
