@@ -1,6 +1,6 @@
 import os
 import openai
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -13,14 +13,6 @@ from pydub import AudioSegment
 # Ключи
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-
-# Клавиатура с режимами (убрана кнопка "Создать медитацию")
-KEYBOARD = ReplyKeyboardMarkup(
-    keyboard=[["Понять себя"], ["Беседа"]],
-    resize_keyboard=True,
-    one_time_keyboard=False,
-    input_field_placeholder="Выбери режим"
-)
 
 # Инструкция для GPT
 SYSTEM_PROMPT = """
@@ -83,8 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💬 Моя задача — помочь тебе почувствовать себя лучше прямо сейчас.\n"
         "Мы можем мягко разобраться, что тебя беспокоит, и найти, что с этим можно сделать. 🕊️🧠\n\n"
         "🔒 Бот полностью анонимный — ты можешь быть собой.\n\n"
-        "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬",
-        reply_markup=KEYBOARD
+        "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -96,6 +87,26 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Задаю только вопросы, на которые можно ответить «да» или «нет», и иду вместе с тобой шаг за шагом.\n\n"
         "Попробуй просто начать: расскажи, как ты сейчас? 💬"
     )
+
+async def set_bot_commands(application):
+    await application.bot.set_my_commands([
+        BotCommand("start", "начать общение"),
+        BotCommand("help", "как работает бот"),
+        BotCommand("ponyatsebya", "режим 'Понять себя'"),
+        BotCommand("beseda", "режим 'Беседа'"),
+    ])
+
+async def ponyat_sebya_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    context.user_data["mode"] = "analyze"
+    context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    await update.message.reply_text("Режим 'Понять себя' включён. Напиши, что тебя беспокоит 💬")
+
+async def beseda_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    context.user_data["mode"] = "chat"
+    context.user_data["history"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    await update.message.reply_text("Режим 'Беседа' включён. Просто расскажи, как ты сейчас ☕")
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(action="typing")
@@ -118,7 +129,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = response.choices[0].message.content.strip()
         context.user_data["history"].append({"role": "assistant", "content": reply})
         await update.message.chat.send_action(action="typing")
-        await update.message.reply_text(reply[:4000], reply_markup=KEYBOARD)
+        await update.message.reply_text(reply[:4000])
 
     except Exception as e:
         print("❌ Ошибка GPT:", e)
@@ -129,6 +140,8 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("ponyatsebya", ponyat_sebya_command))
+    app.add_handler(CommandHandler("beseda", beseda_command))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, on_startup=set_bot_commands)
