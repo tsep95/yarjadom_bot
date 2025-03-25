@@ -1,7 +1,7 @@
 import os
 import logging
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 import openai
 
 # Настройка этапов диалога
@@ -19,7 +19,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-def start(update: Update, context: CallbackContext) -> int:
+async def start(update: Update, context: CallbackContext) -> int:
     welcome_message = (
         "Привет! Я рядом. 🤗\n"
         "Тёплый психологический помощник, с которым можно просто поговорить. 🧸\n\n"
@@ -31,7 +31,7 @@ def start(update: Update, context: CallbackContext) -> int:
         "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
     )
     
-    update.message.reply_text(welcome_message)
+    await update.message.reply_text(welcome_message)
     user_states[update.effective_chat.id] = {
         "stage": GREETING,
         "history": [{"role": "system", "content": "Ты опытный психолог..."}]
@@ -58,12 +58,12 @@ def generate_gpt_response(prompt: str, chat_id: int) -> str:
         logging.error(f"OpenAI Error: {e}")
         return "Кажется, я временно не могу ответить. 🫣 Давай попробуем ещё раз?"
 
-def handle_message(update: Update, context: CallbackContext) -> int:
+async def handle_message(update: Update, context: CallbackContext) -> int:
     chat_id = update.effective_chat.id
     user_input = update.message.text
     
     if chat_id not in user_states:
-        return start(update, context)
+        return await start(update, context)
     
     current_stage = user_states[chat_id]["stage"]
     
@@ -87,32 +87,30 @@ def handle_message(update: Update, context: CallbackContext) -> int:
     else:
         response = generate_gpt_response(user_input, chat_id)
     
-    update.message.reply_text(response)
+    await update.message.reply_text(response)
     return user_states[chat_id]["stage"]
 
-def cancel(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text("Всегда буду рад помочь снова! 💖")
+async def cancel(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text("Всегда буду рад помочь снова! 💖")
     return ConversationHandler.END
 
 def main() -> None:
-    updater = Updater(TELEGRAM_TOKEN)
-    dispatcher = updater.dispatcher
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            GREETING: [MessageHandler(Filters.text & ~Filters.command, handle_message)],
-            ANALYSIS: [MessageHandler(Filters.text & ~Filters.command, handle_message)],
-            DEEP_ANALYSIS: [MessageHandler(Filters.text & ~Filters.command, handle_message)],
-            SOLUTION: [MessageHandler(Filters.text & ~Filters.command, handle_message)],
-            SUBSCRIPTION: [MessageHandler(Filters.text & ~Filters.command, handle_message)]
+            GREETING: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            ANALYSIS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            DEEP_ANALYSIS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            SOLUTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            SUBSCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    dispatcher.add_handler(conv_handler)
-    updater.start_polling()
-    updater.idle()
+    application.add_handler(conv_handler)
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
