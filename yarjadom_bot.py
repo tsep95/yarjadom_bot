@@ -1,18 +1,18 @@
 import os
-import telebot
+import openai
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-from openai import OpenAI
 
-# Загружаем переменные окружения из .env файла (для Railway)
+# Загружаем переменные окружения
 load_dotenv()
 
-# Токены и ключи из переменных окружения
+# Токены и ключи
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Инициализация бота и OpenAI клиента
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Инициализация OpenAI клиента
+openai.api_key = OPENAI_API_KEY
 
 # Словарь для хранения истории диалогов
 user_data = {}
@@ -50,17 +50,15 @@ WELCOME_MESSAGE = (
 )
 
 # Обработчик команды /start
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    user_id = message.chat.id
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.chat_id
     user_data[user_id] = {"history": []}  # Инициализируем историю для пользователя
-    bot.reply_to(message, WELCOME_MESSAGE)
+    await update.message.reply_text(WELCOME_MESSAGE)
 
 # Обработчик текстовых сообщений
-@bot.message_handler(content_types=['text'])
-def handle_message(message):
-    user_id = message.chat.id
-    user_input = message.text
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.chat_id
+    user_input = update.message.text
 
     # Если пользователь новый, инициализируем его данные
     if user_id not in user_data:
@@ -76,7 +74,7 @@ def handle_message(message):
     ]
 
     # Отправляем запрос к OpenAI API
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=messages,
         temperature=0.7,
@@ -84,7 +82,7 @@ def handle_message(message):
     )
 
     # Получаем ответ от ChatGPT
-    gpt_response = response.choices[0].message.content
+    gpt_response = response.choices[0].message["content"]
 
     # Проверяем ключевые слова для предложения подписки
     subscription_triggers = ["хочу больше помощи", "как дальше", "что делать"]
@@ -95,9 +93,17 @@ def handle_message(message):
     user_data[user_id]["history"].append({"role": "assistant", "content": gpt_response})
 
     # Отправляем ответ пользователю
-    bot.reply_to(message, gpt_response)
+    await update.message.reply_text(gpt_response)
 
 # Запуск бота
 if __name__ == "__main__":
     print("Бот запущен!")
-    bot.polling(none_stop=True)
+    # Создаём приложение
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    # Добавляем обработчики
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Запускаем polling
+    application.run_polling()
