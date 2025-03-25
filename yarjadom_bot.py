@@ -2,14 +2,10 @@ import os
 import openai
 from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from dotenv import load_dotenv
 
-# Загружаем переменные окружения
-load_dotenv()
-
-# Токены и ключи
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Установи эти переменные в Railway или напрямую здесь (для теста)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Задайте в Railway
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Задайте в Railway
 
 # Инициализация OpenAI клиента
 openai.api_key = OPENAI_API_KEY
@@ -98,6 +94,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Запуск бота
 if __name__ == "__main__":
     print("Бот запущен!")
+    # Проверка наличия токенов
+    if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+        raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены в переменных окружения!")
+
     # Создаём приложение
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
