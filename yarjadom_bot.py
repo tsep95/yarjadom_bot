@@ -1,7 +1,7 @@
 import os
 import openai
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import random
 
 # Установи эти переменные в Railway или напрямую здесь (для теста)
@@ -14,7 +14,7 @@ openai.api_key = OPENAI_API_KEY
 # Словарь для хранения истории диалогов и этапов
 user_data = {}
 
-# Обновлённый промпт с интеграцией нового текста
+# Обновлённый промпт (без изменений)
 SYSTEM_PROMPT = """
 Ты — опытный психолог, ведущий дружелюбные и поддерживающие беседы. Ты используешь смайлики, чтобы сделать общение теплее и комфортнее. В начале сообщений ты можешь добавлять мягкие и дружелюбные эмодзи (например, 😊, 💙, 🌿), а в ответах на радостные новости — радостные эмодзи (🎉, 😃, 💫). Если собеседник делится чем-то трудным, ты используешь эмодзи, передающие поддержку (🤗, ❤️, 🙏). Используй смайлики естественно, но не перегружай текст ими.
 
@@ -49,8 +49,33 @@ WELCOME_MESSAGE = (
     "💬 Моя задача — помочь тебе почувствовать себя лучше прямо сейчас.\n"
     "Мы можем мягко разобраться, что тебя беспокоит, и найти, что с этим можно сделать. 🕊️🧠\n\n"
     "🔒 Бот полностью анонимный — ты можешь быть собой.\n\n"
-    "Хочешь — начнём с простого: расскажи, как ты сейчас? 🌤️💬"
+    "Выбери, что ты чувствуешь прямо сейчас 👇"
 )
+
+# Список эмоций
+EMOTIONS = [
+    "Тревога", "Апатия / нет сил", "Злость / раздражение", 
+    "Со мной что-то не так", "Пустота / бессмысленность", 
+    "Одиночество", "Вина"
+]
+
+# Ответы с "эмоциональным зеркалом"
+EMOTION_RESPONSES = {
+    "Тревога": "💙 Тревога? Это как будто внутри всё сжимается и не даёт покоя, да? Что её вызывает?",
+    "Апатия / нет сил": "🌿 Апатия? Такое чувство, будто сил совсем не осталось, и всё потеряло цвет, верно? От чего это началось?",
+    "Злость / раздражение": "🔥 Злость? Это как будто что-то внутри кипит и хочет вырваться, да? Что тебя так задело?",
+    "Со мной что-то не так": "😔 “Со мной что-то не так”? Это как будто ты сам себе кажешься чужим, правильно? Когда это чувство появилось?",
+    "Пустота / бессмысленность": "🌫️ Пустота? Такое ощущение, будто всё вокруг потеряло смысл, да? Что этому предшествовало?",
+    "Одиночество": "💨 Одиночество? Это как будто ты один в целом мире, даже если кто-то рядом, верно? Почему так кажется?",
+    "Вина": "❤️ Вина? Это как тяжёлый груз, который давит на сердце, да? Из-за чего ты себя винишь?"
+}
+
+# Создание клавиатуры с эмоциями
+def create_emotion_keyboard():
+    keyboard = [
+        [InlineKeyboardButton(emotion, callback_data=emotion)] for emotion in EMOTIONS
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,7 +89,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "solution_offered": False,
         "last_emoji": None
     }
-    await update.message.reply_text(WELCOME_MESSAGE)
+    await update.message.reply_text(WELCOME_MESSAGE, reply_markup=create_emotion_keyboard())
+
+# Обработчик выбора эмоции
+async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.message.chat_id
+    chosen_emotion = query.data
+
+    # Устанавливаем этап 2 и эмоцию
+    user_data[user_id]["stage"] = 2
+    user_data[user_id]["dominant_emotion"] = chosen_emotion
+    user_data[user_id]["history"].append({"role": "user", "content": chosen_emotion})
+
+    # Отправляем ответ с "эмоциональным зеркалом"
+    response = EMOTION_RESPONSES.get(chosen_emotion, "🤗 Понимаю, это непросто. Что именно вызывает у тебя это чувство?")
+    user_data[user_id]["history"].append({"role": "assistant", "content": response})
+    await query.edit_message_text(response)
 
 # Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,6 +123,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "solution_offered": False,
             "last_emoji": None
         }
+        await update.message.reply_text(WELCOME_MESSAGE, reply_markup=create_emotion_keyboard())
+        return
 
     # Увеличиваем счётчик сообщений
     user_data[user_id]["message_count"] += 1
@@ -89,15 +132,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Добавляем сообщение пользователя в историю
     user_data[user_id]["history"].append({"role": "user", "content": user_input})
 
-    # Список эмоций для выбора
-    emotions_list = [
-        "тревога", "апатия / нет сил", "злость / раздражение", 
-        "со мной что-то не так", "пустота / бессмысленность", 
-        "одиночество", "вина"
-    ]
-
     # Логика этапов
-    message_count = user_data[user_id]["message_count"]
     stage = user_data[user_id]["stage"]
     dominant_emotion = user_data[user_id]["dominant_emotion"]
     problem_hint = user_data[user_id]["problem_hint"]
@@ -105,16 +140,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_emoji = user_data[user_id]["last_emoji"]
 
     # Переход между этапами
-    if stage == 1 and message_count > 1:
-        user_data[user_id]["stage"] = 2
-        gpt_response = "💙 Расскажи, что ты сейчас чувствуешь? Вот что может быть: Тревога, Апатия / нет сил, Злость / раздражение, “Со мной что-то не так”, Пустота / бессмысленность, Одиночество, Вина. Что ближе к тебе?"
-    elif stage == 2 and any(emotion in user_input for emotion in emotions_list):
-        for emotion in emotions_list:
-            if emotion in user_input:
-                user_data[user_id]["dominant_emotion"] = emotion
-                user_data[user_id]["stage"] = 3
-                break
-        gpt_response = f"🤗 Понимаю, {dominant_emotion} — это непросто. Что именно вызывает у тебя это чувство?"
+    if stage == 2 and problem_hint:
+        user_data[user_id]["stage"] = 3
     elif stage == 3 and problem_hint:
         user_data[user_id]["stage"] = 4
     elif stage == 4 and not solution_offered:
@@ -124,7 +151,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Если хочешь, можем поболтать об этом побольше — у меня есть друг, другой бот, где профи помогут разобраться глубже. Хочешь попробовать? 😌"
         )
     else:
-        # Формируем запрос к ChatGPT для остальных случаев
+        # Формируем запрос к ChatGPT
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             *user_data[user_id]["history"]
@@ -142,7 +169,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if any(keyword in user_input for keyword in problem_keywords):
         user_data[user_id]["problem_hint"] = True
 
-    # Выбор смайлика с учётом последнего использованного
+    # Выбор смайлика
     emoji_list = ["😊", "🤗", "💛", "🌿", "💌", "😌", "🌸", "✨", "☀️", "🌟"]
     if any(emoji in gpt_response for emoji in emoji_list):
         for emoji in emoji_list:
@@ -172,5 +199,6 @@ if __name__ == "__main__":
         raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены!")
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(handle_emotion_choice))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.run_polling()
