@@ -154,4 +154,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id]["stage"] = 4
     elif stage == 4 and not solution_offered:
         user_data[user_id]["solution_offered"] = True
-        gpt_response = "Понимаю, работа и учёба отнимают всё время, а друзья остаются далеко. Попробуй написать
+        gpt_response = "Понимаю, работа и учёба отнимают всё время, а друзья остаются далеко. Попробуй написать им короткое сообщение — просто сказать, что скучаешь. Это может облегчить твоё одиночество."
+    elif stage == 4 and solution_offered:
+        gpt_response = "Если хочешь, можем поболтать об этом побольше. У меня есть друг, другой бот, где профи помогут разобраться глубже. Хочешь попробовать?"
+    else:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *user_data[user_id]["history"]
+        ]
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                temperature=0.8,
+                max_tokens=100,  # Ещё меньше для скорости
+                timeout=5  # Тайм-аут 5 секунд
+            )
+            gpt_response = response.choices[0].message["content"]
+        except Exception as e:
+            gpt_response = "Ой, что-то пошло не так. Давай попробуем ещё раз? Что тебя сейчас больше всего беспокоит?"
+
+    # Проверяем намёк на проблему
+    problem_keywords = ["потому что", "из-за", "случилось", "работа", "учёба", "вуз", "дома", "человек", "друзья", "расстался", "уволили", "потерял", "сроки", "дела"]
+    if any(keyword in user_input for keyword in problem_keywords):
+        user_data[user_id]["problem_hint"] = True
+
+    # Добавляем смайлики
+    gpt_response = add_emojis_to_response(gpt_response)
+    user_data[user_id]["history"].append({"role": "assistant", "content": gpt_response})
+
+    if len(user_data[user_id]["history"]) > 10:
+        user_data[user_id]["history"] = user_data[user_id]["history"][-10:]
+
+    # Удаляем уведомление и отправляем ответ
+    await context.bot.delete_message(chat_id=user_id, message_id=thinking_message.message_id)
+    await update.message.reply_text(gpt_response)
+
+# Запуск бота
+if __name__ == "__main__":
+    print("Бот запущен!")
+    if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+        raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены!")
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(handle_emotion_choice))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.run_polling()
