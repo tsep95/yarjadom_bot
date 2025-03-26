@@ -10,18 +10,16 @@ import re
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Проверка токенов
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены в переменных окружения!")
+    raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены!")
 
-# Инициализация OpenAI с асинхронным клиентом
-from openai import AsyncOpenAI
-openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+# Инициализация OpenAI (старая версия)
+openai.api_key = OPENAI_API_KEY
 
 # Хранилище данных пользователей
 user_data = {}
 
-# Промпт (вставьте полный текст из вашего оригинала)
+# Промпт (взято из вашего предыдущего кода)
 SYSTEM_PROMPT = """
 Ты — опытный психолог, ведущий дружелюбные и поддерживающие беседы. Добавляй один смайлик после некоторых мыслей, где это усиливает эмоцию, выбирая его по контексту (😊, 🤗, 💛, 🌿, 💌, 😌, 🌸, ✨, ☀️, 🌟). Не используй смайлики слишком часто, чтобы текст оставался естественным. В начале сообщений можешь использовать мягкие эмодзи (😊, 💙, 🌿), а для трудных тем — поддерживающие (🤗, ❤️, 🙏).
 
@@ -123,37 +121,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_data[user_id]
     state["history"].append({"role": "user", "content": user_input})
     
-    # Отправка временного сообщения
     thinking_msg = await update.message.reply_text("Думаю над этим... 🌿")
     
     try:
-        async with asyncio.timeout(15):  # Замена async_timeout на asyncio.timeout
-            if state["stage"] == 4:
-                if not state["solution_offered"]:
-                    response = "Попробуй выделить 5 минут, чтобы записать свои мысли или сделать маленький шаг к тому, что тебя беспокоит. Это может дать ясность и немного облегчить нагрузку 🌿."
-                    state["solution_offered"] = True
-                else:
-                    response = "Если хочешь разобраться глубже, у меня есть друг — другой бот, где профи помогут с этим. Хочешь попробовать? 😌"
-                    state.clear()
+        if state["stage"] == 4:
+            if not state["solution_offered"]:
+                response = "Попробуй выделить 5 минут, чтобы записать свои мысли или сделать маленький шаг к тому, что тебя беспокоит. Это может дать ясность и немного облегчить нагрузку 🌿."
+                state["solution_offered"] = True
             else:
-                # Генерация ответа через OpenAI с асинхронным клиентом
-                messages = [{"role": "system", "content": SYSTEM_PROMPT}] + state["history"][-4:]
-                completion = await openai_client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=messages,
-                    temperature=0.8,
-                )
-                response = completion.choices[0].message.content
-                
-                # Автоматическое продвижение этапов
-                if any(kw in user_input.lower() for kw in ["потому что", "из-за", "по причине"]):
-                    state["stage"] = min(state["stage"] + 1, 4)
-
-            response = add_emojis(response)
-            state["history"].append({"role": "assistant", "content": response})
+                response = "Если хочешь разобраться глубже, у меня есть друг — другой бот, где профи помогут с этим. Хочешь попробовать? 😌"
+                state.clear()
+        else:
+            # Синхронный вызов OpenAI (старая версия)
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}] + state["history"][-4:]
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                temperature=0.8,
+                timeout=15
+            )
+            response = completion.choices[0].message["content"]
             
-    except asyncio.TimeoutError:
-        response = "Кажется, я немного задумался... Можешь повторить? 💭"
+            if any(kw in user_input.lower() for kw in ["потому что", "из-за", "по причине"]):
+                state["stage"] = min(state["stage"] + 1, 4)
+
+        response = add_emojis(response)
+        state["history"].append({"role": "assistant", "content": response})
+        
     except Exception as e:
         print(f"Error: {e}")
         response = "Что-то пошло не так... Давай попробуем ещё раз? 🌸"
@@ -161,7 +155,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
         except Exception:
-            pass  # Игнорируем ошибку удаления, если сообщение уже удалено
+            pass
 
     await send_long_message(user_id, response, context)
 
