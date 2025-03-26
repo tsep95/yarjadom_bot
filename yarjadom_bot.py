@@ -5,19 +5,23 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 import random
 import asyncio
 import re
-from async_timeout import timeout
 
 # Токены
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Инициализация OpenAI
-openai.api_key = OPENAI_API_KEY
+# Проверка токенов
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены в переменных окружения!")
+
+# Инициализация OpenAI с асинхронным клиентом
+from openai import AsyncOpenAI
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # Хранилище данных пользователей
 user_data = {}
 
-# Промпт
+# Промпт (вставьте полный текст из вашего оригинала)
 SYSTEM_PROMPT = """
 Ты — опытный психолог, ведущий дружелюбные и поддерживающие беседы. Добавляй один смайлик после некоторых мыслей, где это усиливает эмоцию, выбирая его по контексту (😊, 🤗, 💛, 🌿, 💌, 😌, 🌸, ✨, ☀️, 🌟). Не используй смайлики слишком часто, чтобы текст оставался естественным. В начале сообщений можешь использовать мягкие эмодзи (😊, 💙, 🌿), а для трудных тем — поддерживающие (🤗, ❤️, 🙏).
 
@@ -55,7 +59,15 @@ EMOTIONS = [
     "Одиночество", "Вина"
 ]
 
-EMOTION_RESPONSES = { ... }  # Полный словарь из оригинала
+EMOTION_RESPONSES = {
+    "Тревога": "Тревога? Это как будто внутри всё сжимается и не даёт покоя, да? Что её вызывает?",
+    "Апатия / нет сил": "Апатия? Такое чувство, будто сил совсем не осталось, и всё потеряло цвет, верно? От чего это началось?",
+    "Злость / раздражение": "Злость? Это как будто что-то внутри кипит и хочет вырваться, да? Что тебя так задело?",
+    "Со мной что-то не так": "“Со мной что-то не так”? Это как будто ты сам себе кажешься чужим, правильно? Когда это чувство появилось?",
+    "Пустота / бессмысленность": "Пустота? Такое ощущение, будто всё вокруг потеряло смысл, да? Что этому предшествовало?",
+    "Одиночество": "Одиночество? Это как будто ты один в целом мире, даже если кто-то рядом, верно? Почему так кажется?",
+    "Вина": "Вина? Это как тяжёлый груз, который давит на сердце, да? Из-за чего ты себя винишь?"
+}
 
 def create_emotion_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton(e, callback_data=e)] for e in EMOTIONS])
@@ -76,7 +88,10 @@ async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TY
     emotion = query.data
     
     user_data[user_id]["stage"] = 2
+    user_data[user_id]["history"].append({"role": "user", "content": emotion})
     response = EMOTION_RESPONSES.get(emotion, "Расскажи мне подробнее, что ты чувствуешь? 🌸")
+    response = add_emojis(response)
+    user_data[user_id]["history"].append({"role": "assistant", "content": response})
     
     await query.edit_message_text(response)
     await query.answer()
@@ -86,18 +101,15 @@ def add_emojis(text):
     sentences = re.split(r'(?<=[.!?]) +', text)
     
     for i in range(len(sentences)):
-        if random.random() > 0.7 and i < len(sentences)-1:
+        if random.random() > 0.7 and i < len(sentences) - 1:
             sentences[i] += " " + random.choice(emojis)
     
-    return ' '.join(sentences)
+    return " ".join(sentences)
 
 async def send_long_message(chat_id, text, context):
     MAX_LENGTH = 4096
     for i in range(0, len(text), MAX_LENGTH):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=text[i:i+MAX_LENGTH]
-        )
+        await context.bot.send_message(chat_id=chat_id, text=text[i:i + MAX_LENGTH])
         await asyncio.sleep(0.3)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -115,24 +127,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thinking_msg = await update.message.reply_text("Думаю над этим... 🌿")
     
     try:
-        async with timeout(15):
-            # Логика этапов
+        async with asyncio.timeout(15):  # Замена async_timeout на asyncio.timeout
             if state["stage"] == 4:
                 if not state["solution_offered"]:
-                    response = "Попробуй выделить 5 минут... 🌿"
+                    response = "Попробуй выделить 5 минут, чтобы записать свои мысли или сделать маленький шаг к тому, что тебя беспокоит. Это может дать ясность и немного облегчить нагрузку 🌿."
                     state["solution_offered"] = True
                 else:
-                    response = "Хочешь попробовать другого бота? 😌"
+                    response = "Если хочешь разобраться глубже, у меня есть друг — другой бот, где профи помогут с этим. Хочешь попробовать? 😌"
                     state.clear()
             else:
-                # Генерация ответа через OpenAI
+                # Генерация ответа через OpenAI с асинхронным клиентом
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}] + state["history"][-4:]
-                
-                completion = await openai.ChatCompletion.acreate(
+                completion = await openai_client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=messages,
                     temperature=0.8,
-                    request_timeout=15
                 )
                 response = completion.choices[0].message.content
                 
@@ -140,7 +149,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if any(kw in user_input.lower() for kw in ["потому что", "из-за", "по причине"]):
                     state["stage"] = min(state["stage"] + 1, 4)
 
-            # Обработка и отправка ответа
             response = add_emojis(response)
             state["history"].append({"role": "assistant", "content": response})
             
@@ -150,11 +158,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error: {e}")
         response = "Что-то пошло не так... Давай попробуем ещё раз? 🌸"
     finally:
-        # Удаление временного сообщения
-        await context.bot.delete_message(
-            chat_id=user_id,
-            message_id=thinking_msg.message_id
-        )
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
+        except Exception:
+            pass  # Игнорируем ошибку удаления, если сообщение уже удалено
 
     await send_long_message(user_id, response, context)
 
