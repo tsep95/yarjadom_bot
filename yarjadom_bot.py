@@ -178,5 +178,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обобщённое решение на этапе 4
     if stage == 4 and problem_hint and not solution_offered:
         solutions = {
-            "грусть": "Дай себе минутку отдыха
-            
+            "грусть": "Дай себе минутку отдыха 🤗",
+            "стресс": "Сделай перерывчик 🌿",
+            "усталость": "Попробуй расслабиться немного 💛",
+            "одиночество": "Поболтай с кем-то близким 🌸",
+            "гнев": "Отвлекись на что-то приятное ✨"
+        }
+        gpt_response = solutions.get(dominant_emotion, "Сделай перерывчик 🌿")
+        user_data[user_id]["solution_offered"] = True
+
+    # Приглашение к подписке после решения
+    elif stage == 4 and solution_offered:
+        gpt_response = (
+            "Если хочешь, можем поболтать об этом подробнее — у меня есть друг, другой бот, где профи помогут разобраться получше. Хочешь попробовать? 😌"
+        )
+
+    # Выбор смайлика с учётом последнего использованного
+    emoji_list = ["😊", "🤗", "💛", "🌿", "💌", "😌", "🌸", "✨", "☀️", "🌟"]
+    if any(emoji in gpt_response for emoji in emoji_list):
+        for emoji in emoji_list:
+            if emoji in gpt_response:
+                user_data[user_id]["last_emoji"] = emoji
+                break
+    else:
+        available_emojis = [e for e in emoji_list if e != last_emoji] or emoji_list
+        selected_emoji = random.choice(available_emojis)
+        gpt_response += f" {selected_emoji}"
+        user_data[user_id]["last_emoji"] = selected_emoji
+
+    # Добавляем ответ в историю
+    user_data[user_id]["history"].append({"role": "assistant", "content": gpt_response})
+
+    # Ограничиваем историю
+    if len(user_data[user_id]["history"]) > 10:
+        user_data[user_id]["history"] = user_data[user_id]["history"][-10:]
+
+    # Отправляем ответ пользователю
+    await update.message.reply_text(gpt_response)
+
+# Запуск бота
+if __name__ == "__main__":
+    print("Бот запущен!")
+    if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+        raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены!")
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.run_polling()
