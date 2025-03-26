@@ -6,17 +6,17 @@ import random
 import asyncio
 import re
 
-# Установи эти переменные в Railway или напрямую здесь (для теста)
+# Токены
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Инициализация OpenAI клиента
+# Инициализация OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# Словарь для хранения истории диалогов и этапов
+# Хранилище данных пользователей
 user_data = {}
 
-# Обновлённый промпт
+# Промпт (без изменений)
 SYSTEM_PROMPT = """
 Ты — опытный психолог, ведущий дружелюбные и поддерживающие беседы. Добавляй один смайлик после некоторых мыслей, где это усиливает эмоцию, выбирая его по контексту (😊, 🤗, 💛, 🌿, 💌, 😌, 🌸, ✨, ☀️, 🌟). Не используй смайлики слишком часто, чтобы текст оставался естественным. В начале сообщений можешь использовать мягкие эмодзи (😊, 💙, 🌿), а для трудных тем — поддерживающие (🤗, ❤️, 🙏).
 
@@ -40,7 +40,6 @@ SYSTEM_PROMPT = """
 — Добавь переход: "Если хочешь разобраться глубже, у меня есть друг — другой бот, где профи помогут с этим. Хочешь попробовать? 😌".
 """
 
-# Вступительное сообщение
 WELCOME_MESSAGE = (
     "Привет, я рядом. 🤗\n"
     "Тёплый психологический помощник-бот, с которым можно просто поговорить. 🧸\n"
@@ -49,14 +48,12 @@ WELCOME_MESSAGE = (
     "Выбери, что ты чувствуешь прямо сейчас 👇"
 )
 
-# Список эмоций
 EMOTIONS = [
     "Тревога", "Апатия / нет сил", "Злость / раздражение", 
     "Со мной что-то не так", "Пустота / бессмысленность", 
     "Одиночество", "Вина"
 ]
 
-# Ответы с "эмоциональным зеркалом"
 EMOTION_RESPONSES = {
     "Тревога": "Тревога? Это как будто внутри всё сжимается и не даёт покоя, да? Что её вызывает?",
     "Апатия / нет сил": "Апатия? Такое чувство, будто сил совсем не осталось, и всё потеряло цвет, верно? От чего это началось?",
@@ -67,14 +64,10 @@ EMOTION_RESPONSES = {
     "Вина": "Вина? Это как тяжёлый груз, который давит на сердце, да? Из-за чего ты себя винишь?"
 }
 
-# Создание клавиатуры с эмоциями
 def create_emotion_keyboard():
-    keyboard = [
-        [InlineKeyboardButton(emotion, callback_data=emotion)] for emotion in EMOTIONS
-    ]
+    keyboard = [[InlineKeyboardButton(emotion, callback_data=emotion)] for emotion in EMOTIONS]
     return InlineKeyboardMarkup(keyboard)
 
-# Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.chat_id
     user_data[user_id] = {
@@ -87,7 +80,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     await update.message.reply_text(WELCOME_MESSAGE, reply_markup=create_emotion_keyboard())
 
-# Обработчик выбора эмоции
 async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.message.chat_id
@@ -101,29 +93,37 @@ async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TY
     response = add_emojis_to_response(response)
     user_data[user_id]["history"].append({"role": "assistant", "content": response})
     await query.edit_message_text(response)
+    await query.answer()
 
-# Добавление смайликов без удаления знаков препинания
 def add_emojis_to_response(response):
     emoji_list = ["😊", "🤗", "💛", "🌿", "💌", "😌", "🌸", "✨", "☀️", "🌟"]
-    sentences = re.split(r'(?<=[.!?])\s+', response.strip())  # Разделяем по точкам и вопросам
+    sentences = re.split(r'(?<=[.!?])\s+', response.strip())
     result = []
-    used_emojis = set()  # Отслеживаем использованные смайлики в этом сообщении
+    used_emojis = set()
     
     for i, sentence in enumerate(sentences):
-        if sentence:
-            # Добавляем смайлик только в 50% случаев для естественности
-            if random.random() > 0.5 and i < len(sentences) - 1:  # Не добавляем в конце всегда
-                available_emojis = [e for e in emoji_list if e not in used_emojis]
-                if not available_emojis:  # Если закончились уникальные, сбрасываем
-                    available_emojis = emoji_list
-                selected_emoji = random.choice(available_emojis)
-                used_emojis.add(selected_emoji)
-                sentence = f"{sentence.strip()} {selected_emoji}"
-            result.append(sentence)
+        if sentence and random.random() > 0.5 and i < len(sentences) - 1:
+            available_emojis = [e for e in emoji_list if e not in used_emojis]
+            if not available_emojis:
+                available_emojis = emoji_list
+            selected_emoji = random.choice(available_emojis)
+            used_emojis.add(selected_emoji)
+            sentence = f"{sentence.strip()} {selected_emoji}"
+        result.append(sentence)
     
     return " ".join(result)
 
-# Обработчик текстовых сообщений
+# Разделение длинных сообщений
+async def send_long_message(chat_id, text, context):
+    MAX_MESSAGE_LENGTH = 4096
+    if len(text) <= MAX_MESSAGE_LENGTH:
+        await context.bot.send_message(chat_id=chat_id, text=text)
+    else:
+        parts = [text[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(text), MAX_MESSAGE_LENGTH)]
+        for part in parts:
+            await context.bot.send_message(chat_id=chat_id, text=part)
+            await asyncio.sleep(0.5)  # Небольшая задержка между частями
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.chat_id
     user_input = update.message.text.lower()
@@ -143,6 +143,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data[user_id]["message_count"] += 1
     user_data[user_id]["history"].append({"role": "user", "content": user_input})
 
+    # Отправляем "Думаю над этим..." и сохраняем ID сообщения
     thinking_message = await update.message.reply_text("Думаю над этим... 🌿")
 
     stage = user_data[user_id]["stage"]
@@ -150,20 +151,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     problem_hint = user_data[user_id]["problem_hint"]
     solution_offered = user_data[user_id]["solution_offered"]
 
+    # Логика этапов
     if stage == 2 and problem_hint:
         user_data[user_id]["stage"] = 3
     elif stage == 3 and problem_hint:
         user_data[user_id]["stage"] = 4
     elif stage == 4 and not solution_offered:
         user_data[user_id]["solution_offered"] = True
-        gpt_response = "Понимаю, такие чувства могут быть тяжёлыми. Попробуй выделить 5 минут, чтобы записать свои мысли или сделать маленький шаг к тому, что тебя беспокоит. Это может дать ясность и немного облегчить нагрузку."
+        gpt_response = "Понимаю, такие чувства могут быть тяжёлыми. Попробуй выделить 5 минут, чтобы записать свои мысли или сделать маленький шаг к тому, что тебя беспокоит. Это может дать ясность и немного облегчить нагрузку 🌿."
     elif stage == 4 and solution_offered:
         gpt_response = "Если хочешь разобраться глубже, у меня есть друг — другой бот, где профи помогут с этим. Хочешь попробовать? 😌"
     else:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            *user_data[user_id]["history"]
-        ]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}, *user_data[user_id]["history"]]
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
@@ -175,20 +174,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             gpt_response = "Ой, что-то пошло не так. Давай попробуем ещё раз? Что тебя сейчас больше всего беспокоит?"
 
+    # Проверка на ключевые слова для перехода к следующему этапу
     problem_keywords = ["потому что", "из-за", "случилось", "работа", "учёба", "вуз", "дома", "человек", "друзья", "расстался", "уволили", "потерял", "сроки", "дела"]
     if any(keyword in user_input for keyword in problem_keywords):
         user_data[user_id]["problem_hint"] = True
 
+    # Добавляем смайлики и сохраняем ответ
     gpt_response = add_emojis_to_response(gpt_response)
     user_data[user_id]["history"].append({"role": "assistant", "content": gpt_response})
 
+    # Ограничиваем историю
     if len(user_data[user_id]["history"]) > 10:
         user_data[user_id]["history"] = user_data[user_id]["history"][-10:]
 
-    await context.bot.delete_message(chat_id=user_id, message_id=thinking_message.message_id)
-    await update.message.reply_text(gpt_response)
+    # Удаляем "Думаю над этим..." перед отправкой ответа
+    try:
+        await context.bot.delete_message(chat_id=user_id, message_id=thinking_message.message_id)
+    except Exception:
+        pass  # Если не удалось удалить, просто продолжаем
 
-# Запуск бота
+    # Отправляем ответ, разбивая на части при необходимости
+    await send_long_message(user_id, gpt_response, context)
+
 if __name__ == "__main__":
     print("Бот запущен!")
     if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
