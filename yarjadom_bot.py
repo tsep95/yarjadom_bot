@@ -35,7 +35,7 @@ EMOTION_KEYWORDS = {
     "thoughtful": ["думаю", "кажется", "почему", "что", "когда"]
 }
 
-# Промпт (обновлённый)
+# Промпт
 SYSTEM_PROMPT = """
 Ты — тёплый, внимательный и эмпатичный помощник по психологической поддержке. Пользователь уже выбрал одно из состояний, которое его беспокоит (например, тревога, апатия, злость, пустота, одиночество, вина, «со мной что-то не так», бессмысленность и т.п.).
 
@@ -91,7 +91,7 @@ def create_emotion_keyboard():
 def create_start_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("Приступим", callback_data="start_talk")]])
 
-# Функция для контекстного добавления эмодзи
+# Обновлённая функция для контекстного добавления эмодзи
 def add_contextual_emojis(text):
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     result = []
@@ -102,7 +102,7 @@ def add_contextual_emojis(text):
         length = len(words)
         lower_sentence = sentence.lower()
         
-        if total_emojis >= 3:  # Лимит 3 эмодзи
+        if total_emojis >= 3:  # Лимит 3 эмодзи для всего сообщения
             result.append(sentence)
             continue
         
@@ -113,17 +113,21 @@ def add_contextual_emojis(text):
                 tone = category
                 break
         
-        # Выбираем эмодзи в зависимости от длины и тона
-        if length <= 6 and total_emojis < 3:  # Короткое — 1 эмодзи
+        # Добавляем не более 1 эмодзи в предложении
+        if length <= 4 and total_emojis < 3:  # Очень короткое — 1 эмодзи в конце
             emoji = random.choice(EMOJI_CATEGORIES[tone])
             sentence += f" {emoji}"
             total_emojis += 1
-        elif length > 6 and total_emojis <= 1:  # Длинное — до 2 эмодзи
+        elif 4 < length <= 8 and total_emojis < 3:  # Среднее — 1 эмодзи в конце
+            emoji = random.choice(EMOJI_CATEGORIES[tone])
+            sentence += f" {emoji}"
+            total_emojis += 1
+        elif length > 8 and total_emojis < 3:  # Длинное — 1 эмодзи в середине
             half = len(words) // 2
-            emoji1 = random.choice(EMOJI_CATEGORIES[tone])
-            emoji2 = random.choice(EMOJI_CATEGORIES[tone])
-            sentence = " ".join(words[:half]) + f" {emoji1} " + " ".join(words[half:]) + f" {emoji2}"
-            total_emojis += 2
+            emoji = random.choice(EMOJI_CATEGORIES[tone])
+            sentence = " ".join(words[:half]) + f" {emoji} " + " ".join(words[half:])
+            total_emojis += 1
+        
         result.append(sentence)
     
     return "\n".join(result)
