@@ -13,7 +13,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     raise ValueError("TELEGRAM_TOKEN и OPENAI_API_KEY должны быть установлены!")
 
-# Инициализация OpenAI (старая версия)
+# Инициализация OpenAI
 openai.api_key = OPENAI_API_KEY
 
 # Хранилище данных пользователей
@@ -21,17 +21,17 @@ user_data = {}
 
 # Категории эмодзи для контекстного добавления
 EMOJI_CATEGORIES = {
-    "positive": ["😊", "🌱", "✨", "💛", "🤗"],  # Позитив, надежда
-    "support": ["🕊", "🌿", "🧸", "🤝"],         # Поддержка, тепло
-    "sad": ["😔", "🌧", "⏳"],                   # Грусть, тяжесть
-    "thoughtful": ["💭", "🤔", "🧠"]            # Размышления, вопросы
+    "positive": ["😊", "🌱", "✨", "💛", "🤗"],
+    "support": ["🕊", "🌿", "🧸", "🤝"],
+    "sad": ["😔", "🌧", "⏳"],
+    "thoughtful": ["💭", "🤔", "🧠"]
 }
 
 # Ключевые слова для определения тона
 EMOTION_KEYWORDS = {
     "positive": ["хорошо", "лучше", "рада", "рад", "спасибо", "круто"],
     "support": ["рядом", "помочь", "вместе", "не один", "справимся"],
-    "sad": ["грустно", "тяжело", "плохо", "сложно", "больно"],
+    "sad": ["грустно", "тяжело", "плохо", "сложно", "больно", "злюсь", "злость"],
     "thoughtful": ["думаю", "кажется", "почему", "что", "когда"]
 }
 
@@ -55,6 +55,7 @@ SYSTEM_PROMPT = """
  • На каждом этапе держи фокус: от общей картины → к причинам → к внутреннему конфликту → к скрытой потребности.
  • Не предлагай решения до пятого сообщения. Сначала полностью пойми человека и его состояние.
  • Помни всё, что говорил пользователь, и ссылайся на это в ответах, чтобы он чувствовал, что ты слушаешь. Например, если он сказал “Я злюсь, когда меня не слышат”, напиши позже: “Ты упомянул, что злишься, когда тебя не слышат… что ты чувствуешь в такие моменты внутри?”
+ • Если указано настроение пользователя (например, positive, negative, neutral), адаптируй тон ответа: для позитивного — больше тепла и поддержки, для негативного — больше сочувствия и мягкости.
 """
 
 WELCOME_MESSAGE = (
@@ -91,7 +92,15 @@ def create_emotion_keyboard():
 def create_start_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("Приступим", callback_data="start_talk")]])
 
-# Обновлённая функция для контекстного добавления эмодзи
+# Функция для определения настроения без Azure
+def analyze_sentiment(text):
+    text_lower = text.lower()
+    for tone, keywords in EMOTION_KEYWORDS.items():
+        if any(keyword in text_lower for keyword in keywords):
+            return tone
+    return "neutral"  # По умолчанию, если ничего не найдено
+
+# Функция для контекстного добавления эмодзи
 def add_contextual_emojis(text):
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     result = []
@@ -102,27 +111,25 @@ def add_contextual_emojis(text):
         length = len(words)
         lower_sentence = sentence.lower()
         
-        if total_emojis >= 3:  # Лимит 3 эмодзи для всего сообщения
+        if total_emojis >= 3:  # Лимит 3 эмодзи
             result.append(sentence)
             continue
         
-        # Определяем эмоциональный тон
         tone = "support"  # По умолчанию — поддержка
         for category, keywords in EMOTION_KEYWORDS.items():
             if any(keyword in lower_sentence for keyword in keywords):
                 tone = category
                 break
         
-        # Добавляем не более 1 эмодзи в предложении
-        if length <= 4 and total_emojis < 3:  # Очень короткое — 1 эмодзи в конце
+        if length <= 4 and total_emojis < 3:  # Очень короткое
             emoji = random.choice(EMOJI_CATEGORIES[tone])
             sentence += f" {emoji}"
             total_emojis += 1
-        elif 4 < length <= 8 and total_emojis < 3:  # Среднее — 1 эмодзи в конце
+        elif 4 < length <= 8 and total_emojis < 3:  # Среднее
             emoji = random.choice(EMOJI_CATEGORIES[tone])
             sentence += f" {emoji}"
             total_emojis += 1
-        elif length > 8 and total_emojis < 3:  # Длинное — 1 эмодзи в середине
+        elif length > 8 and total_emojis < 3:  # Длинное
             half = len(words) // 2
             emoji = random.choice(EMOJI_CATEGORIES[tone])
             sentence = " ".join(words[:half]) + f" {emoji} " + " ".join(words[half:])
@@ -150,7 +157,6 @@ async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TY
     user_data[user_id]["dominant_emotion"] = emotion
     user_data[user_id]["history"].append({"role": "user", "content": emotion})
     response = EMOTION_RESPONSES.get(emotion, "Расскажи мне подробнее, что ты чувствуешь?")
-    # Без добавления эмодзи в заготовленные сообщения
     user_data[user_id]["history"].append({"role": "assistant", "content": response})
     
     await query.edit_message_text(response)
@@ -186,7 +192,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thinking_msg = await update.message.reply_text("Думаю над этим... 🌿")
     
     try:
-        user_messages = len([m for m in state["history"] if m["role"] == "user"])
+        # Анализируем настроение сообщения пользователя
+        sentiment = analyze_sentiment(user_input)
+        
+        # Добавляем информацию о настроении в историю
+        state["history"].append({"role": "system", "content": f"Настроение пользователя: {sentiment}"})
+        
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + state["history"]
         completion = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -196,7 +207,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         response = completion.choices[0].message["content"]
         
-        # Добавляем контекстные эмодзи только к ответам GPT
+        # Добавляем контекстные эмодзи
         response_with_emojis = add_contextual_emojis(response)
         
         if any(kw in user_input for kw in ["потому что", "из-за", "по причине"]):
