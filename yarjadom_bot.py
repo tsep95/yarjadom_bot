@@ -57,30 +57,32 @@ WELCOME_MESSAGE = (
     "Готов начать? Жми ниже 🌿 и пойдём вместе!"
 )
 
+# Список эмоций с короткими callback_data
 EMOTIONS = [
-    "Я не могу расслабиться, жду плохого.",
-    "Мне ничего не хочется, просто лежать.",
-    "Меня всё бесит, взрываюсь по мелочам.",
-    "Я не такой, сломанный, не вписываюсь.",
-    "Нет смысла, внутри пусто.",
-    "Я один, даже среди людей.",
-    "Я всё испортил, это моя вина.",
-    "Не могу определиться."
+    {"text": "Я не могу расслабиться, жду плохого.", "callback": "anxiety"},
+    {"text": "Мне ничего не хочется, просто лежать.", "callback": "apathy"},
+    {"text": "Меня всё бесит, взрываюсь по мелочам.", "callback": "anger"},
+    {"text": "Я не такой, сломанный, не вписываюсь.", "callback": "self_doubt"},
+    {"text": "Нет смысла, внутри пусто.", "callback": "emptiness"},
+    {"text": "Я один, даже среди людей.", "callback": "loneliness"},
+    {"text": "Я всё испортил, это моя вина.", "callback": "guilt"},
+    {"text": "Не могу определиться.", "callback": "indecision"}
 ]
 
+# Реакции на выбор эмоций
 EMOTION_RESPONSES = {
-    "Я не могу расслабиться, жду плохого.": "Напряжение висит в воздухе 🌪️. Что занимает твои мысли? 🌟",
-    "Мне ничего не хочется, просто лежать.": "Сил нет даже на простое 🌫️. Что не отпускает тебя? 😔",
-    "Меня всё бесит, взрываюсь по мелочам.": "Злость как вулкан 🔥. Что тревожит больше всего? 💢",
-    "Я не такой, сломанный, не вписываюсь.": "Ощущение, что ты не на месте 😔. Что занимает мысли? 🧐",
-    "Нет смысла, внутри пусто.": "Пустота как эхо 🌌. Что не отпускает тебя сейчас? 😞",
-    "Я один, даже среди людей.": "Одиночество внутри, несмотря на шум 💭. Что тревожит? 🌫️",
-    "Я всё испортил, это моя вина.": "Вина давит как камень 💔. Что занимает твои мысли? 😞",
-    "Не могу определиться.": "Всё мутно, сложно выбрать 🤔. Что занимает мысли? 💬"
+    "anxiety": "Напряжение висит в воздухе 🌪️. Что занимает твои мысли? 🌟",
+    "apathy": "Сил нет даже на простое 🌫️. Что не отпускает тебя? 😔",
+    "anger": "Злость как вулкан 🔥. Что тревожит больше всего? 💢",
+    "self_doubt": "Ощущение, что ты не на месте 😔. Что занимает мысли? 🧐",
+    "emptiness": "Пустота как эхо 🌌. Что не отпускает тебя сейчас? 😞",
+    "loneliness": "Одиночество внутри, несмотря на шум 💭. Что тревожит? 🌫️",
+    "guilt": "Вина давит как камень 💔. Что занимает твои мысли? 😞",
+    "indecision": "Всё мутно, сложно выбрать 🤔. Что занимает мысли? 💬"
 }
 
 def create_emotion_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton(e, callback_data=e)] for e in EMOTIONS])
+    return InlineKeyboardMarkup([[InlineKeyboardButton(e["text"], callback_data=e["callback"])] for e in EMOTIONS])
 
 def create_start_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("Приступим", callback_data="start_talk")]])
@@ -97,15 +99,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.message.chat.id
-    emotion = query.data
+    callback_data = query.data
     
-    user_data[user_id]["stage"] = 2
-    user_data[user_id]["dominant_emotion"] = emotion
-    user_data[user_id]["history"].append({"role": "user", "content": emotion})
-    response = EMOTION_RESPONSES.get(emotion, "Расскажи мне подробнее, что ты чувствуешь?")
-    user_data[user_id]["history"].append({"role": "assistant", "content": response})
-    
-    await query.edit_message_text(response)
+    # Находим полное описание эмоции по callback_data
+    emotion = next((e for e in EMOTIONS if e["callback"] == callback_data), None)
+    if emotion:
+        full_emotion = emotion["text"]
+        user_data[user_id]["stage"] = 2
+        user_data[user_id]["dominant_emotion"] = full_emotion
+        user_data[user_id]["history"].append({"role": "user", "content": full_emotion})
+        response = EMOTION_RESPONSES.get(callback_data, "Расскажи мне подробнее, что ты чувствуешь?")
+        user_data[user_id]["history"].append({"role": "assistant", "content": response})
+        
+        await query.edit_message_text(response)
     await query.answer()
 
 async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -167,7 +173,7 @@ if __name__ == "__main__":
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(handle_emotion_choice, pattern="^(Я не могу расслабиться, жду плохого\.|Мне ничего не хочется, просто лежать\.|Меня всё бесит, взрываюсь по мелочам\.|Я не такой, сломанный, не вписываюсь\.|Нет смысла, внутри пусто\.|Я один, даже среди людей\.|Я всё испортил, это моя вина\.|Не могу определиться\.)$"))
+    application.add_handler(CallbackQueryHandler(handle_emotion_choice, pattern="^(anxiety|apathy|anger|self_doubt|emptiness|loneliness|guilt|indecision)$"))
     application.add_handler(CallbackQueryHandler(handle_start_choice, pattern="^start_talk$"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
