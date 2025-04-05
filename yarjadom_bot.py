@@ -32,7 +32,7 @@ SYSTEM_PROMPT = """
   3. "Слушай, а что именно в этой ситуации держит тебя сильнее всего? Может, есть что-то, что ты хотел бы изменить, но не можешь? 🧐"
   4. "Интересно, если бы одна вещь могла облегчить это состояние, что бы это было? Что мешает тебе её получить или сделать? 🌈"
   5. "Подумай, с чего это чувство вообще взялось — может, есть какой-то момент в прошлом, который до сих пор отдаётся в тебе? 💭"
-• После пятого вопроса дай заключение в формате: "Ты здорово разобрался в себе! 🌟 Тебе бы отлично помог [метод], есть моя платная версия — она поможет!" — где [метод] — подходящий метод психотерапии, основанный на ответах.
+• После пятого вопроса дай заключение в формате: "Ты здорово разобрался в себе! 🌟 Тебе бы отлично помог [метод], есть моя платная версия — она поможет!" — где [метод] — подходящий метод психотерапии, основанный на ответах. Добавь к заключению кнопку "Расскажи подробнее" (callback_data="more_info").
 • Не предлагай продолжать общение после заключения и не добавляй фразы вроде "Возвращайся, если что" или "Давай ещё поболтаем".
 • Если пользователь уклоняется, мягко возвращай его к теме с любопытством (например, "Хм, а как это связано с тем, что ты чувствуешь внутри?").
 
@@ -57,7 +57,6 @@ WELCOME_MESSAGE = (
     "Готов начать? Жми ниже 🌿 и пойдём вместе!"
 )
 
-# Новый список эмоций с эмодзи
 EMOTIONS = [
     {"text": "Не могу расслабиться, жду плохого 🌀", "callback": "anxiety"},
     {"text": "Нет сил, хочется просто лежать 🛌", "callback": "apathy"},
@@ -69,7 +68,6 @@ EMOTIONS = [
     {"text": "Не могу выбрать, запутался 🤯", "callback": "indecision"}
 ]
 
-# Обновленные реакции на выбор эмоций
 EMOTION_RESPONSES = {
     "anxiety": "Напряжение кружит, как вихрь 🌀. Что сейчас занимает твои мысли больше всего? 🌟",
     "apathy": "Сил нет, будто всё замерло 🛌. Что не отпускает тебя прямо сейчас? 😔",
@@ -101,7 +99,6 @@ async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = query.message.chat.id
     callback_data = query.data
     
-    # Находим полное описание эмоции по callback_data
     emotion = next((e for e in EMOTIONS if e["callback"] == callback_data), None)
     if emotion:
         full_emotion = emotion["text"]
@@ -123,6 +120,17 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_data[user_id]["stage"] = 2
         await query.edit_message_text(response, reply_markup=create_emotion_keyboard())
         await query.answer()
+
+async def handle_more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.message.chat.id
+    response = (
+        "Моя платная версия — это индивидуальная поддержка с глубоким разбором твоих чувств и ситуаций. "
+        "Я помогу тебе шаг за шагом двигаться к внутреннему спокойствию с помощью проверенных методов. "
+        "Если интересно, могу рассказать, как это работает! 🌿"
+    )
+    await query.edit_message_text(response)
+    await query.answer()
 
 async def send_long_message(chat_id, text, context):
     MAX_LENGTH = 4096
@@ -156,18 +164,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if stage < 5:
             state["stage"] += 1
-        state["history"].append({"role": "assistant", "content": response})
+            state["history"].append({"role": "assistant", "content": response})
+            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
+            await send_long_message(user_id, response, context)
+        elif stage == 5:
+            state["history"].append({"role": "assistant", "content": response})
+            final_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Расскажи подробнее", callback_data="more_info")]])
+            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
+            await context.bot.send_message(chat_id=user_id, text=response, reply_markup=final_keyboard)
+            state["stage"] += 1  # Чтобы не повторять заключение
         
     except Exception as e:
         print(f"Ошибка в handle_message: {e}")
         response = "Что-то пошло не так... Давай попробуем ещё раз?"
-    finally:
-        try:
-            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
-        except Exception as e:
-            print(f"Ошибка при удалении сообщения: {e}")
-
-    await send_long_message(user_id, response, context)
+        await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
+        await send_long_message(user_id, response, context)
 
 if __name__ == "__main__":
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -175,6 +186,7 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_emotion_choice, pattern="^(anxiety|apathy|anger|self_doubt|emptiness|loneliness|guilt|indecision)$"))
     application.add_handler(CallbackQueryHandler(handle_start_choice, pattern="^start_talk$"))
+    application.add_handler(CallbackQueryHandler(handle_more_info, pattern="^more_info$"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("Бот запущен!")
