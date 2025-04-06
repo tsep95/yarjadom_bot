@@ -6,7 +6,11 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 import asyncio
 from openai import OpenAI
 import logging
+import random
 
+
+MIN_QUESTIONS = random.randint(5, 8)
+MAX_QUESTIONS = 10
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -254,7 +258,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
         
         # Завершаем после 5+ вопросов или при максимуме (7)
-        if (emotion_match and state["question_count"] >= 5) or state["question_count"] >= 10:
+        if (emotion_match and state["question_count"] >= MIN_QUESTIONS) or state["question_count"] >= MAX_QUESTIONS:
             if emotion_match:
                 emotion = emotion_match.group(1)
             else:
