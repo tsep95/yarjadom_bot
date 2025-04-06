@@ -257,11 +257,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             therapy = THERAPY_METHODS.get(emotion, THERAPY_METHODS["неопределённость"])
             final_response = FINAL_MESSAGE.format(cause=emotion, method=therapy[0], reason=therapy[1])
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
-            await send_long_message(user_id, final_response, context)
+            # Отправляем финальное сообщение с кнопкой
             await context.bot.send_message(
                 chat_id=user_id,
-                text="",
-                reply_markup=create_more_info_keyboard()  # Прикрепляем кнопку "Расскажи подробнее"
+                text=final_response,
+                reply_markup=create_more_info_keyboard()  # Кнопка "Расскажи подробнее" прикреплена
             )
             logger.info(f"User {user_id} reached final stage with emotion: {emotion}")
         else:
