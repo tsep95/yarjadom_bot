@@ -222,8 +222,6 @@ async def send_long_message(chat_id: int, text: str, context: ContextTypes.DEFAU
         await context.bot.send_message(chat_id=chat_id, text=text[i:i + MAX_LENGTH])
         await asyncio.sleep(0.3)
 
-# Обработчик текстовых сообщений
-# Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -251,9 +249,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Убираем [emotion:эмоция] из текста перед отправкой
         clean_response = re.sub(r'\[emotion:\w+\]', '', response).strip()
         
-        # Проверяем, есть ли в ответе [emotion:эмоция] для завершения
+        # Проверяем, есть ли в ответе [emotion:эмоция]
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
-        if emotion_match or state["question_count"] >= 12:
+        
+        # Завершаем только после 5+ вопросов или при максимуме (12)
+        if (emotion_match and state["question_count"] >= 5) or state["question_count"] >= 12:
             if emotion_match:
                 emotion = emotion_match.group(1)
             else:
@@ -268,7 +268,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             logger.info(f"User {user_id} reached final stage with emotion: {emotion}")
         else:
-            # Показываем очищенный ответ как вопрос
+            # Продолжаем задавать вопросы, если меньше 5
             state["history"].append({"role": "assistant", "content": clean_response})
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
             await send_long_message(user_id, clean_response, context)
