@@ -254,7 +254,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
         
         # Завершаем после 5+ вопросов или при максимуме (7)
-        if (emotion_match and state["question_count"] >= 5) or state["question_count"] >= 7:
+        if (emotion_match and state["question_count"] >= 5) or state["question_count"] >= 10:
             if emotion_match:
                 emotion = emotion_match.group(1)
             else:
