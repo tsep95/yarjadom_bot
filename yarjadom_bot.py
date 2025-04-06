@@ -223,6 +223,7 @@ async def send_long_message(chat_id: int, text: str, context: ContextTypes.DEFAU
         await asyncio.sleep(0.3)
 
 # Обработчик текстовых сообщений
+# Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -247,7 +248,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         response = completion.choices[0].message.content
         
-        # Проверяем, есть ли в ответе [emotion:эмоция]
+        # Убираем [emotion:эмоция] из текста перед отправкой
+        clean_response = re.sub(r'\[emotion:\w+\]', '', response).strip()
+        
+        # Проверяем, есть ли в ответе [emotion:эмоция] для завершения
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
         if emotion_match or state["question_count"] >= 12:
             if emotion_match:
@@ -257,18 +261,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             therapy = THERAPY_METHODS.get(emotion, THERAPY_METHODS["неопределённость"])
             final_response = FINAL_MESSAGE.format(cause=emotion, method=therapy[0], reason=therapy[1])
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
-            # Отправляем финальное сообщение с кнопкой
             await context.bot.send_message(
                 chat_id=user_id,
                 text=final_response,
-                reply_markup=create_more_info_keyboard()  # Кнопка "Расскажи подробнее" прикреплена
+                reply_markup=create_more_info_keyboard()  # Кнопка "Расскажи подробнее"
             )
             logger.info(f"User {user_id} reached final stage with emotion: {emotion}")
         else:
-            # Показываем ответ как вопрос
-            state["history"].append({"role": "assistant", "content": response})
+            # Показываем очищенный ответ как вопрос
+            state["history"].append({"role": "assistant", "content": clean_response})
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
-            await send_long_message(user_id, response, context)
+            await send_long_message(user_id, clean_response, context)
         
     except Exception as e:
         logger.error(f"Ошибка в handle_message для user_id {user_id}: {str(e)}")
