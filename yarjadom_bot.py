@@ -217,6 +217,13 @@ async def handle_more_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer()
 
 # Функция отправки длинных сообщений
+async def send_long_message(chat_id: int, text: str, context: ContextTypes.DEFAULT_TYPE) -> None:
+    MAX_LENGTH = 4096
+    for i in range(0, len(text), MAX_LENGTH):
+        await context.bot.send_message(chat_id=chat_id, text=text[i:i + MAX_LENGTH])
+        await asyncio.sleep(0.3)
+
+# Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -241,9 +248,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         response = completion.choices[0].message.content
         
+        # Логируем ответ DeepSeek для отладки
+        logger.info(f"DeepSeek response for user {user_id}: {response}")
+        
         # Убираем [emotion:эмоция] и текст в круглых скобках
-        clean_response = re.sub(r'\[emotion:\w+\]', '', response)  # Удаляем метку эмоции
-        clean_response = re.sub(r'\(.*?\)', '', clean_response).strip()  # Удаляем всё в круглых скобках
+        clean_response = re.sub(r'\[emotion:\w+\]', '', response)
+        clean_response = re.sub(r'\(.*?\)', '', clean_response).strip()
         
         # Проверяем, есть ли в ответе [emotion:эмоция]
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
@@ -265,6 +275,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             logger.info(f"User {user_id} reached final stage with emotion: {emotion}")
         else:
             # Продолжаем задавать вопросы
+            if not clean_response:  # Если ответ пустой, используем запасной вопрос
+                clean_response = (
+                    "Хм, похоже, мы ещё чуть-чуть в пути 🌱.\n\n"
+                    "Что сейчас крутится у тебя в голове?\n\n"
+                    "Может, есть что-то, что хочется сказать? 🤗"
+                )
             state["history"].append({"role": "assistant", "content": clean_response})
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
             await send_long_message(user_id, clean_response, context)
