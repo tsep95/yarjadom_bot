@@ -58,7 +58,7 @@ SYSTEM_PROMPT = """
 
 Особые инструкции:
 • Задавай строго один вопрос за раз, жди ответа перед следующим.
-• Продолжай задавать вопросы, пока не достигнешь высокой уверенности в главной эмоции или не превысишь 10 вопросов.
+• Продолжай задавать вопросы, пока не достигнешь высокой уверенности в главной эмоции или не превысишь 12 вопросов.
 • Каждый ответ должен содержать ровно 2 предложения: первое — эмоциональное и сочувствующее, второе — цельный вопрос (например, "Мне так жаль, что ты чувствуешь этот груз.\n\nЧто именно не даёт тебе отпустить это ощущение?").
 • Разделяй предложения двойным \n\n для читаемости.
 • Используй яркие эмодзи (до 3 в вопросе): 🐾, 🌈, 🚀, 🍉 — для поддержки и тепла.
@@ -67,7 +67,7 @@ SYSTEM_PROMPT = """
 • Анализируй историю диалога после каждого ответа, определяй главную эмоцию.
 • Возможные эмоции: одиночество, страх отвержения, вина, стыд, беспомощность, гнев, обида, тревожность, страх, потеря смысла, недоверие, перфекционизм, зависть, самоотвержение, печаль, скорбь, неуверенность, уязвимость.
 • Добавляй [emotion:эмоция] в конец ответа только для внутренней логики, когда уверен в эмоции, не показывай это пользователю.
-• Если после 10 вопросов эмоция не ясна, используй [emotion:неопределённость].
+• Если после 12 вопросов эмоция не ясна, используй [emotion:неопределённость].
 """
 
 # Финальное сообщение
@@ -174,8 +174,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "question_count": 0,
         "dominant_emotion": None,
         "emotion_scores": {emotion: 0 for emotion in THERAPY_METHODS.keys()},
-        "min_questions": random.randint(5, 8),
-        "max_questions": 10
+        "min_questions": 5,  # Фиксированный минимум
+        "max_questions": random.randint(10, 12)  # Максимум от 10 до 12
     }
     await update.message.reply_text(WELCOME_MESSAGE, reply_markup=create_start_keyboard())
 
@@ -220,7 +220,6 @@ async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TY
         response = EMOTION_RESPONSES.get(callback_data, "Понимаю, как непросто тебе сейчас.\n\nЧто тебя тревожит больше всего? 🌿")
         user_data[user_id]["history"].append({"role": "assistant", "content": response})
         user_data[user_id]["question_count"] += 1
-        # Обновляем баллы на основе начального выбора
         user_data[user_id]["emotion_scores"] = update_emotion_scores(full_emotion, user_data[user_id]["emotion_scores"])
         
         await query.edit_message_text(response)
@@ -270,13 +269,16 @@ async def send_long_message(chat_id: int, text: str, context: ContextTypes.DEFAU
         await context.bot.send_message(chat_id=chat_id, text=text[i:i + MAX_LENGTH])
         await asyncio.sleep(0.3)
 
-# Новая функция завершения диалога
+# Функция завершения диалога
 async def finish_conversation(user_id: int, emotion: str, context: ContextTypes.DEFAULT_TYPE, state: dict):
     therapy = THERAPY_METHODS.get(emotion, THERAPY_METHODS["неопределённость"])
     final_response = FINAL_MESSAGE.format(cause=emotion, method=therapy[0], reason=therapy[1])
     thinking_msg_id = state.get("thinking_msg_id")
     if thinking_msg_id:
-        await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg_id)
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение {thinking_msg_id}: {str(e)}")
     await context.bot.send_message(
         chat_id=user_id,
         text=final_response,
@@ -285,7 +287,7 @@ async def finish_conversation(user_id: int, emotion: str, context: ContextTypes.
     logger.info(f"Диалог завершен. Пользователь: {user_id}, Эмоция: {emotion}")
     del user_data[user_id]
 
-# Модифицированный обработчик сообщений
+# Обработчик сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -359,7 +361,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception as e:
         logger.error(f"Ошибка в handle_message для user_id {user_id}: {str(e)}")
         response = "Что-то пошло не так, и мне жаль, что так вышло.\n\nХочешь попробовать ещё раз? 🌿"
-        await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
+        except Exception as delete_error:
+            logger.warning(f"Не удалось удалить сообщение {thinking_msg.message_id}: {str(delete_error)}")
         await send_long_message(user_id, response, context)
 
 # Запуск бота
