@@ -10,9 +10,9 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Токены
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-DEEPSEEK_API_KEY = "sk-d08c904a63614b7b9bbe96d08445426a"
+# Токены (замените на свои)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_TOKEN_HERE")
+DEEPSEEK_API_KEY = "YOUR_DEEPSEEK_API_KEY_HERE"
 
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN должен быть установлен!")
@@ -22,8 +22,10 @@ client = OpenAI(
     base_url="https://api.deepseek.com"
 )
 
+# Хранилище данных пользователей
 user_data: Dict[int, dict] = {}
 
+# Системный промпт для бота
 SYSTEM_PROMPT = """
 Ты — чат-бот в Telegram, созданный для роли самого лучшего психолога в мире и заботливого собеседника. 
 Твоя задача — задавать пользователю вопросы о его состоянии и о том, что его беспокоит, 
@@ -31,8 +33,8 @@ SYSTEM_PROMPT = """
 
 Особые инструкции:
 • Задавай вопросы по одному за раз, ожидая ответа перед следующим. 
-  Задай минимум 5 вопросов и максимум 10, чтобы понять глубинные чувства и эмоции пользователя. 
-  После 5 вопросов оценивай, достаточно ли информации: если причина ясна — заверши пустым ответом, если нет — продолжай до 10.
+  Задай минимум 3 и максимум 12 вопросов, чтобы понять глубинные чувства и эмоции пользователя. 
+  После 3 вопросов оценивай, достаточно ли информации: если причина ясна — заверши пустым ответом, если нет — продолжай до 12.
 • Каждый вопрос — 3-4 предложения, конкретный, тёплый и с искренним интересом, 
   чтобы раскрыть глубину (например, "Ого, а что именно в этой ситуации заставляет тебя чувствовать себя виноватым?\n\nНе отпускает какой-то момент?\n\nМожет, есть что-то, что ты хотел бы изменить?"). 
   Разделяй предложения двойным символом новой строки (\n\n) для удобства чтения. 
@@ -42,11 +44,12 @@ SYSTEM_PROMPT = """
 • Если пользователь отвечает уклончиво ("Не знаю", "Всё нормально"), 
   мягко переформулируй или предложи копнуть глубже (например, "Хм, а что тогда всё-таки цепляет внутри?\n\nМожет, что-то незаметно давит?").
 • Обращай внимание на ключевые слова, повторяющиеся темы и эмоции в ответах. 
-  После 5+ вопросов, если причина ясна на уровне чувств и эмоций, заверши пустым ответом ("").
+  После 3+ вопросов, если причина ясна на уровне чувств и эмоций, заверши пустым ответом ("").
 • Не предлагай решений в процессе вопросов и не пиши "Продолжим позже" — просто задавай вопросы или завершай пустым ответом.
 • Не генерируй заключение здесь — это сделает код после пустого ответа.
 """
 
+# Финальное сообщение
 FINAL_MESSAGE = (
     "Ты большой молодец, что доверился и прошёл этот разбор — это уже шаг к себе настоящему! 💫\n\n"
     "По тому, что ты рассказал, я вижу:\n"
@@ -69,11 +72,12 @@ FINAL_MESSAGE = (
     "Я буду рядом — не просто бот, а твой тёплый спутник на пути к себе 🌈."
 )
 
+# Функция анализа ответов
 def analyze_responses(history: list[dict]) -> Tuple[Optional[str], Optional[Tuple[str, str]]]:
     user_responses = [msg["content"].lower() for msg in history if msg["role"] == "user"]
     combined_text = " ".join(user_responses)
     
-    # Базовый список методов
+    # Базовый список методов терапии
     default_therapy_methods = {
         "подавленные эмоции": ("когнитивно-поведенческой терапии", "она помогает осознать и изменить негативные мыслительные паттерны"),
         "внутренний конфликт": ("гештальт-терапии", "она помогает завершить незакрытые ситуации и прожить подавленные эмоции"),
@@ -87,7 +91,7 @@ def analyze_responses(history: list[dict]) -> Tuple[Optional[str], Optional[Tupl
         "потеря смысла": ("арт-терапии", "она помогает выразить подавленные эмоции через творчество и найти новые ориентиры")
     }
     
-    # Анализ эмоций и причин
+    # Ключевые слова для анализа
     keywords = {
         "подавленные эмоции": ["не могу", "не получается", "тяжело", "давит"],
         "внутренний конфликт": ["выбор", "конфликт", "не знаю что", "между"],
@@ -112,14 +116,14 @@ def analyze_responses(history: list[dict]) -> Tuple[Optional[str], Optional[Tupl
     
     num_responses = len(user_responses)
     
-    # Если меньше 5 ответов — продолжаем
-    if num_responses < 5:
+    # Если меньше 3 ответов — продолжаем
+    if num_responses < 3:
         return None, None
     
-    # Если 5–10 ответов и есть явная причина
-    if num_responses >= 5 and causes and max(causes.values()) > 0:
+    # Если 3–12 ответов и есть явная причина
+    if num_responses >= 3 and causes and max(causes.values()) > 0:
         top_cause = max(causes, key=causes.get)
-        if causes[top_cause] >= 2 or num_responses >= 8:  # Более мягкие условия
+        if causes[top_cause] >= 1 or num_responses >= 6:  # Мягкие условия
             return top_cause, default_therapy_methods.get(top_cause, ("разговорах с близким человеком или специалистом", "это помогает мягко разобраться в своих чувствах"))
     
     # Динамическая причина
@@ -136,7 +140,7 @@ def analyze_responses(history: list[dict]) -> Tuple[Optional[str], Optional[Tupl
         method = "практиках осознанности"
         reason = "они помогают усилить позитивные чувства и сохранить баланс"
     else:
-        if num_responses >= 10:  # Завершаем после 10 ответов
+        if num_responses >= 12:  # Завершаем после 12 ответов
             cause = "что-то, что пока трудно назвать"
             method = "разговорах с понимающим человеком или специалистом"
             reason = "это помогает постепенно раскрыть, что тебя волнует"
@@ -145,17 +149,19 @@ def analyze_responses(history: list[dict]) -> Tuple[Optional[str], Optional[Tupl
     
     return cause, (method, reason)
 
+# Приветственное сообщение
 WELCOME_MESSAGE = (
     "Привет 🤗 Я рядом!\n"
     "Тёплый психологический помощник 🧸 с которым можно просто поболтать.\n\n"
     "Если тебе тяжело, тревожно или пусто 🌧 — пиши, я тут.\n"
     "Не буду осуждать или давить 💛 только поддержу.\n\n"
     "💬 Хочу помочь тебе почувствовать себя лучше прямо сейчас.\n"
-    "Мы можем разобраться, что тебя гложет 🕊 и что с этим делать.\n\n"
+    "Мы можем разобраться, что тебя гложет � * шаг за шагом.\n\n"
     "🔒 Всё анонимно — будь собой.\n\n"
     "Готов начать? Жми ниже 🌿 и пойдём вместе!"
 )
 
+# Список эмоций для выбора
 EMOTIONS = [
     {"text": "Не могу расслабиться, жду плохого 🌀", "callback": "anxiety"},
     {"text": "Нет сил, хочется просто лежать 🛌", "callback": "apathy"},
@@ -167,6 +173,7 @@ EMOTIONS = [
     {"text": "Не могу выбрать, запутался 🤯", "callback": "indecision"}
 ]
 
+# Ответы на выбор эмоций
 EMOTION_RESPONSES = {
     "anxiety": "Напряжение кружит, как вихрь 🌀.\n\nЧто сейчас занимает твои мысли больше всего?\n\nЕсть что-то, что не отпускает? 🌟",
     "apathy": "Сил нет, будто всё замерло 🛌.\n\nЧто последнее время забирает твою энергию?\n\nМожет, что-то давит незаметно? 😔",
@@ -180,6 +187,7 @@ EMOTION_RESPONSES = {
 
 SUBSCRIBE_URL = "https://example.com/subscribe"
 
+# Функции создания клавиатур
 def create_emotion_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton(e["text"], callback_data=e["callback"])] for e in EMOTIONS])
 
@@ -189,15 +197,17 @@ def create_start_keyboard() -> InlineKeyboardMarkup:
 def create_subscribe_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("Оплатить подписку 💳", url=SUBSCRIBE_URL)]])
 
+# Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_data[user_id] = {
         "history": [],
-        "stage": 1,
+        "question_count": 0,
         "dominant_emotion": None
     }
     await update.message.reply_text(WELCOME_MESSAGE, reply_markup=create_start_keyboard())
 
+# Обработчик выбора эмоции
 async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     user_id = query.message.chat.id
@@ -206,15 +216,16 @@ async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TY
     emotion = next((e for e in EMOTIONS if e["callback"] == callback_data), None)
     if emotion:
         full_emotion = emotion["text"]
-        user_data[user_id]["stage"] = 2
         user_data[user_id]["dominant_emotion"] = full_emotion
         user_data[user_id]["history"].append({"role": "user", "content": full_emotion})
         response = EMOTION_RESPONSES.get(callback_data, "Расскажи мне подробнее, что ты чувствуешь? 🌿")
         user_data[user_id]["history"].append({"role": "assistant", "content": response})
+        user_data[user_id]["question_count"] += 1
         
         await query.edit_message_text(response)
     await query.answer()
 
+# Обработчик начала разговора
 async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     user_id = query.message.chat.id
@@ -226,10 +237,10 @@ async def handle_start_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Я помогу тебе понять суть переживаний и покажу, как с этим справиться. Спокойно. Без давления. Шаг за шагом ✨\n\n"
             "👉 Что беспокоит тебя больше всего прямо сейчас?"
         )
-        user_data[user_id]["stage"] = 2
         await query.edit_message_text(response, reply_markup=create_emotion_keyboard())
         await query.answer()
 
+# Обработчик кнопки "Расскажи подробнее"
 async def handle_more_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     user_id = query.message.chat.id
@@ -254,12 +265,14 @@ async def handle_more_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.edit_message_text(response, reply_markup=create_subscribe_keyboard())
     await query.answer()
 
+# Функция отправки длинных сообщений
 async def send_long_message(chat_id: int, text: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     MAX_LENGTH = 4096
     for i in range(0, len(text), MAX_LENGTH):
         await context.bot.send_message(chat_id=chat_id, text=text[i:i + MAX_LENGTH])
         await asyncio.sleep(0.3)
 
+# Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -274,40 +287,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     thinking_msg = await update.message.reply_text("Думаю над этим... 🌿")
     
     try:
-        logger.info(f"User {user_id} at stage {state['stage']}")
+        logger.info(f"User {user_id} at question {state['question_count']}")
         
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + state["history"]
         completion = client.chat.completions.create(
             model="deepseek-chat",
             messages=messages,
-            temperature=0.7,  # Чуть выше для разнообразия
+            temperature=0.7,
             timeout=30
         )
         response = completion.choices[0].message.content
         
-        if response.strip() == "":
+        if response.strip() == "" or state["question_count"] >= 12:
             cause, therapy = analyze_responses(state["history"])
             if cause and therapy:
                 final_response = FINAL_MESSAGE.format(cause=cause, method=therapy[0], reason=therapy[1])
-                state["stage"] += 1
                 final_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Расскажи подробнее 🌼", callback_data="more_info")]])
                 await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
                 await context.bot.send_message(chat_id=user_id, text=final_response, reply_markup=final_keyboard)
                 logger.info(f"User {user_id} reached final stage with cause: {cause}")
             else:
-                # Если причина не ясна, задаём ещё вопрос
                 fallback_question = (
-                    "Хм, похоже, мы ещё чуть-чуть не дошли до сути 🌱.\n\n"
-                    "Что сейчас в твоих мыслях или чувствах кажется самым важным?\n\n"
-                    "Может, есть что-то, что ты ещё не упомянул? 🤗"
+                    "Хм, похоже, мы ещё не до конца разобрались с тем, что внутри 🌱.\n\n"
+                    "Может, есть что-то ещё, что ты хотел бы добавить?\n\n"
+                    "Или что-то, что особенно болит? 🤗"
                 )
                 state["history"].append({"role": "assistant", "content": fallback_question})
-                state["stage"] += 1
+                state["question_count"] += 1
                 await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
                 await send_long_message(user_id, fallback_question, context)
         else:
             state["history"].append({"role": "assistant", "content": response})
-            state["stage"] += 1
+            state["question_count"] += 1
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
             await send_long_message(user_id, response, context)
         
@@ -317,6 +328,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
         await send_long_message(user_id, response, context)
 
+# Запуск бота
 if __name__ == "__main__":
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
