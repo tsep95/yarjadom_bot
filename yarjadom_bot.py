@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Токены (замените на свои)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_TOKEN_HERE")
-DEEPSEEK_API_KEY = "YOUR_DEEPSEEK_API_KEY_HERE"
+DEEPSEEK_API_KEY = "sk-d08c904a63614b7b9bbe96d08445426a"
 
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN должен быть установлен!")
