@@ -32,9 +32,9 @@ SYSTEM_PROMPT = """
 
 Особые инструкции:
 • Задавай вопросы по одному за раз, ожидая ответа перед следующим. 
-  Продолжай задавать вопросы минимум 5 раз, чтобы собрать достаточно информации для глубокого понимания. 
-  Даже если кажется, что причина начинает проясняться раньше, не спеши завершать — копай глубже до 5-го вопроса.
-• После 5-го вопроса начинай оценивать, ясна ли причина. 
+  Обязательно задай минимум 5 вопросов, чтобы собрать достаточно информации для глубокого понимания — даже если причина кажется ясной раньше. 
+  Не завершай диалог раньше 5-го вопроса, продолжай углубляться в детали и эмоции.
+• После 5-го вопроса оценивай, ясна ли причина. 
   Если да — прекращай задавать вопросы и дай пустой ответ (без текста), чтобы код перешёл к заключению. 
   Если нет — продолжай задавать вопросы, пока причина не станет очевидной.
 • Каждый вопрос должен быть длиной 3-4 предложения, конкретным, тёплым и с искренним интересом, 
@@ -271,14 +271,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         response = completion.choices[0].message.content
         
-        # Если ответ — это вопрос, продолжаем
-        if response.strip().endswith("?"):
+        # Считаем количество вопросов от бота в истории
+        assistant_questions = sum(1 for msg in state["history"] if msg["role"] == "assistant" and msg["content"].strip().endswith("?"))
+        
+        # Если ответ — это вопрос и ещё не задано 5 вопросов, продолжаем
+        if response.strip().endswith("?") and assistant_questions < 5:
             state["history"].append({"role": "assistant", "content": response})
             state["stage"] += 1
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
             await send_long_message(user_id, response, context)
+        # После 5 вопросов или если ответ не вопрос, переходим к заключению
         else:
-            # Если бот решил, что причина ясна (пустой ответ или не вопрос), переходим к заключению
             cause, (method, reason) = analyze_responses(state["history"])
             final_response = FINAL_MESSAGE.format(cause=cause, method=method, reason=reason)
             state["stage"] += 1
