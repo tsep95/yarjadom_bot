@@ -309,11 +309,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.info(f"User {user_id} emotion scores: {state['emotion_scores']}")
     logger.info(f"Dominant emotion: {dominant_emotion}, confidence: {confidence}")
     
-    # Проверка условий досрочного завершения
+    # Проверка условий завершения с приоритетом уверенности
     if (confidence >= CONFIDENCE_THRESHOLD and 
-        state["question_count"] >= state["min_questions"] and 
-        dominant_emotion and dominant_emotion != "неопределённость"):
-        await finish_conversation(user_id, dominant_emotion, context, state)
+        dominant_emotion and dominant_emotion != "неопределённость") or \
+       state["question_count"] >= state["max_questions"]:
+        final_emotion = dominant_emotion if confidence >= CONFIDENCE_THRESHOLD else "неопределённость"
+        await finish_conversation(user_id, final_emotion, context, state)
         return
     
     thinking_msg = await update.message.reply_text("Думаю над этим... 🌿")
@@ -347,11 +348,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             state["emotion_scores"][detected_emotion] += 2  # Бонус за распознавание модели
             dominant_emotion, confidence = calculate_emotion_confidence(state["emotion_scores"])
         
-        # Проверка условий завершения
-        if (state["question_count"] >= state["max_questions"] or 
-            (confidence >= CONFIDENCE_THRESHOLD and state["question_count"] >= state["min_questions"] and 
-             dominant_emotion and dominant_emotion != "неопределённость")):
-            final_emotion = dominant_emotion if confidence >= 0.6 else "неопределённость"
+        # Повторная проверка условий завершения после ответа модели
+        if (confidence >= CONFIDENCE_THRESHOLD and 
+            dominant_emotion and dominant_emotion != "неопределённость") or \
+           state["question_count"] >= state["max_questions"]:
+            final_emotion = dominant_emotion if confidence >= CONFIDENCE_THRESHOLD else "неопределённость"
             await finish_conversation(user_id, final_emotion, context, state)
         else:
             state["history"].append({"role": "assistant", "content": clean_response})
