@@ -330,7 +330,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.info(f"DeepSeek response for user {user_id}: {response}")
         
         # Убираем [emotion:эмоция] и скобки
-        emotion_match = re.search(r'\[emotion:([^\]]+)\]', response)
+        clean_response = re.sub(r'\[emotion:[^\]]+\]', '', response)
         clean_response = re.sub(r'\(.*?\)', '', clean_response).strip()
         
         # Проверяем формат (2 предложения)
