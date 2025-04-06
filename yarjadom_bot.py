@@ -291,7 +291,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Если модель дала пустой ответ или не вопрос, считаем, что причина ясна
             if not response.strip() or not response.strip().endswith("?"):
                 cause, (method, reason) = analyze_responses(state["history"])
-                final Imam_response = FINAL_MESSAGE.format(cause=cause, method=method, reason=reason)
+                final_response = FINAL_MESSAGE.format(cause=cause, method=method, reason=reason)
                 state["stage"] += 1
                 final_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Расскажи подробнее 🌼", callback_data="more_info")]])
                 await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
