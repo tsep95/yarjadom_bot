@@ -28,6 +28,29 @@ client = OpenAI(
 # Хранилище данных пользователей
 user_data: Dict[int, dict] = {}
 
+# Константы для уверенности
+KEYWORDS = {
+    "одиночество": ["один", "одиночество", "изолирован", "никто", "покинут"],
+    "страх отвержения": ["отвержение", "не принимают", "не любят", "откажут", "осуждение"],
+    "вина": ["вина", "виню", "виноват", "проступок", "провинился"],
+    "стыд": ["стыд", "неловко", "смущение", "унижение", "краснеть"],
+    "беспомощность": ["беспомощен", "бессилие", "отчаяние", "тупик", "безвыходно"],
+    "гнев": ["злость", "взрыв", "ярость", "раздражение", "ненавижу"],
+    "тревожность": ["тревога", "беспокойство", "опасение", "волнение", "паника"],
+    "потеря смысла": ["бессмысленно", "пустота", "никчёмность", "зачем", "бесцельно"],
+    "обида": ["обида", "несправедливо", "предательство", "обманули", "горько"],
+    "страх": ["боюсь", "страшно", "ужас", "фобия", "опасность"],
+    "недоверие": ["доверять", "сомнение", "подозрение", "обман", "ложь"],
+    "перфекционизм": ["идеально", "ошибка", "провал", "недостаток", "критика"],
+    "зависть": ["завидую", "чужие успехи", "сравнение", "несправедливо"],
+    "самоотвержение": ["ненавижу себя", "недостоин", "отрицание", "непринятие"],
+    "печаль": ["грусть", "тоска", "скорбь", "горе", "плакать"],
+    "неуверенность": ["сомневаюсь", "неуверен", "колебание", "нерешительность"],
+    "уязвимость": ["ранимый", "беззащитный", "открытость", "чувствительный"]
+}
+
+CONFIDENCE_THRESHOLD = 0.75  # Порог уверенности для досрочного завершения
+
 # Обновлённый системный промпт
 SYSTEM_PROMPT = """
 Ты — чат-бот в Telegram, лучший психолог и тёплый собеседник. 
@@ -35,8 +58,7 @@ SYSTEM_PROMPT = """
 
 Особые инструкции:
 • Задавай строго один вопрос за раз, жди ответа перед следующим.
-• Минимум вопросов задаётся индивидуально для каждого пользователя (от 5 до 8), максимум — 10.
-• После 5-8 вопросов обязательно определи главную эмоцию и добавь [emotion:эмоция] в конец ответа для внутренней логики.
+• Продолжай задавать вопросы, пока не достигнешь высокой уверенности в главной эмоции или не превысишь 10 вопросов.
 • Каждый ответ должен содержать ровно 2 предложения: первое — эмоциональное и сочувствующее, второе — цельный вопрос (например, "Мне так жаль, что ты чувствуешь этот груз.\n\nЧто именно не даёт тебе отпустить это ощущение?").
 • Разделяй предложения двойным \n\n для читаемости.
 • Используй яркие эмодзи (до 3 в вопросе): 🐾, 🌈, 🚀, 🍉 — для поддержки и тепла.
@@ -44,8 +66,8 @@ SYSTEM_PROMPT = """
 • Если ответ уклончивый ("Не знаю", "Всё нормально"), мягко уточняй (например, "Понимаю, это сложно выразить.\n\nЧто всё-таки шевелится внутри, даже чуть-чуть?").
 • Анализируй историю диалога после каждого ответа, определяй главную эмоцию.
 • Возможные эмоции: одиночество, страх отвержения, вина, стыд, беспомощность, гнев, обида, тревожность, страх, потеря смысла, недоверие, перфекционизм, зависть, самоотвержение, печаль, скорбь, неуверенность, уязвимость.
-• Добавляй [emotion:эмоция] в конец ответа только для внутренней логики, не показывай это пользователю.
-• Если после максимального числа вопросов (10) эмоция не ясна, используй [emotion:неопределённость].
+• Добавляй [emotion:эмоция] в конец ответа только для внутренней логики, когда уверен в эмоции, не показывай это пользователю.
+• Если после 10 вопросов эмоция не ясна, используй [emotion:неопределённость].
 """
 
 # Финальное сообщение
@@ -144,17 +166,45 @@ def create_more_info_keyboard() -> InlineKeyboardMarkup:
 def create_subscribe_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("Оплатить подписку 💳", url=SUBSCRIBE_URL)]])
 
-# Обработчик команды /start
+# Обновляем функцию start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_data[user_id] = {
         "history": [],
         "question_count": 0,
         "dominant_emotion": None,
-        "min_questions": random.randint(5, 8),  # Индивидуальный минимум
-        "max_questions": 10                     # Индивидуальный максимум
+        "emotion_scores": {emotion: 0 for emotion in THERAPY_METHODS.keys()},
+        "min_questions": random.randint(5, 8),
+        "max_questions": 10
     }
     await update.message.reply_text(WELCOME_MESSAGE, reply_markup=create_start_keyboard())
+
+# Новые функции обработки эмоций
+def update_emotion_scores(message: str, emotion_scores: dict) -> dict:
+    lower_msg = message.lower()
+    for emotion, words in KEYWORDS.items():
+        for word in words:
+            if re.search(rf'\b{re.escape(word)}\b', lower_msg):
+                emotion_scores[emotion] += 1
+    return emotion_scores
+
+def calculate_emotion_confidence(emotion_scores: dict) -> tuple:
+    total = sum(emotion_scores.values())
+    if total == 0:
+        return None, 0.0
+    
+    sorted_emotions = sorted(emotion_scores.items(), key=lambda x: x[1], reverse=True)
+    dominant, top_score = sorted_emotions[0]
+    
+    if len(sorted_emotions) == 1:
+        return dominant, 1.0
+    
+    second_score = sorted_emotions[1][1]
+    relative = top_score / total
+    absolute = (top_score - second_score) / top_score if top_score > 0 else 0
+    confidence = 0.7 * relative + 0.3 * absolute
+    
+    return dominant, round(confidence, 2)
 
 # Обработчик выбора эмоции
 async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -170,6 +220,8 @@ async def handle_emotion_choice(update: Update, context: ContextTypes.DEFAULT_TY
         response = EMOTION_RESPONSES.get(callback_data, "Понимаю, как непросто тебе сейчас.\n\nЧто тебя тревожит больше всего? 🌿")
         user_data[user_id]["history"].append({"role": "assistant", "content": response})
         user_data[user_id]["question_count"] += 1
+        # Обновляем баллы на основе начального выбора
+        user_data[user_id]["emotion_scores"] = update_emotion_scores(full_emotion, user_data[user_id]["emotion_scores"])
         
         await query.edit_message_text(response)
     await query.answer()
@@ -218,7 +270,22 @@ async def send_long_message(chat_id: int, text: str, context: ContextTypes.DEFAU
         await context.bot.send_message(chat_id=chat_id, text=text[i:i + MAX_LENGTH])
         await asyncio.sleep(0.3)
 
-# Обработчик текстовых сообщений
+# Новая функция завершения диалога
+async def finish_conversation(user_id: int, emotion: str, context: ContextTypes.DEFAULT_TYPE, state: dict):
+    therapy = THERAPY_METHODS.get(emotion, THERAPY_METHODS["неопределённость"])
+    final_response = FINAL_MESSAGE.format(cause=emotion, method=therapy[0], reason=therapy[1])
+    thinking_msg_id = state.get("thinking_msg_id")
+    if thinking_msg_id:
+        await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg_id)
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=final_response,
+        reply_markup=create_more_info_keyboard()
+    )
+    logger.info(f"Диалог завершен. Пользователь: {user_id}, Эмоция: {emotion}")
+    del user_data[user_id]
+
+# Модифицированный обработчик сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -229,12 +296,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     state = user_data[user_id]
     state["history"].append({"role": "user", "content": user_input})
-    # Обрезка истории диалога (храним последние 10 пар вопрос-ответ, т.е. 20 сообщений)
-    if len(state["history"]) > 20:
+    if len(state["history"]) > 20:  # Храним последние 10 пар вопрос-ответ
         state["history"] = state["history"][-20:]
     state["question_count"] += 1
     
+    # Обновляем баллы эмоций
+    state["emotion_scores"] = update_emotion_scores(user_input, state["emotion_scores"])
+    dominant_emotion, confidence = calculate_emotion_confidence(state["emotion_scores"])
+    
+    logger.info(f"User {user_id} emotion scores: {state['emotion_scores']}")
+    logger.info(f"Dominant emotion: {dominant_emotion}, confidence: {confidence}")
+    
+    # Проверка условий досрочного завершения
+    if (confidence >= CONFIDENCE_THRESHOLD and 
+        state["question_count"] >= state["min_questions"] and 
+        dominant_emotion and dominant_emotion != "неопределённость"):
+        await finish_conversation(user_id, dominant_emotion, context, state)
+        return
+    
     thinking_msg = await update.message.reply_text("Думаю над этим... 🌿")
+    state["thinking_msg_id"] = thinking_msg.message_id
     
     try:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + state["history"]
@@ -248,7 +329,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         logger.info(f"DeepSeek response for user {user_id}: {response}")
         
-        # Убираем [emotion:эмоция] и любые скобки
+        # Убираем [emotion:эмоция] и скобки
         clean_response = re.sub(r'\[emotion:[^\]]+\]', '', response)
         clean_response = re.sub(r'\(.*?\)', '', clean_response).strip()
         
@@ -257,26 +338,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if len(sentences) != 2:
             clean_response = "Понимаю, как непросто тебе сейчас.\n\nЧто больше всего занимает твои мысли в этот момент? 🌱"
         
-        # Проверяем наличие эмоции для завершения
+        # Обновляем баллы на основе ответа модели
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
+        if emotion_match:
+            detected_emotion = emotion_match.group(1)
+            state["emotion_scores"][detected_emotion] += 2  # Бонус за распознавание модели
+            dominant_emotion, confidence = calculate_emotion_confidence(state["emotion_scores"])
         
-        # Завершаем с учётом пользовательских настроек
-        if (emotion_match and state["question_count"] >= state["min_questions"]) or state["question_count"] >= state["max_questions"]:
-            if emotion_match:
-                emotion = emotion_match.group(1)
-            else:
-                emotion = "неопределённость"
-            therapy = THERAPY_METHODS.get(emotion, THERAPY_METHODS["неопределённость"])
-            final_response = FINAL_MESSAGE.format(cause=emotion, method=therapy[0], reason=therapy[1])
-            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=final_response,
-                reply_markup=create_more_info_keyboard()
-            )
-            logger.info(f"User {user_id} reached final stage with emotion: {emotion}")
-            # Сброс состояния после завершения
-            del user_data[user_id]
+        # Проверка условий завершения
+        if (state["question_count"] >= state["max_questions"] or 
+            (confidence >= CONFIDENCE_THRESHOLD and state["question_count"] >= state["min_questions"] and 
+             dominant_emotion and dominant_emotion != "неопределённость")):
+            final_emotion = dominant_emotion if confidence >= 0.6 else "неопределённость"
+            await finish_conversation(user_id, final_emotion, context, state)
         else:
             state["history"].append({"role": "assistant", "content": clean_response})
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
