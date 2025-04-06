@@ -46,6 +46,7 @@ SYSTEM_PROMPT = """
 • После каждого ответа пользователя анализируй историю диалога и пытайся определить основную эмоцию.
 • Возможные эмоции: одиночество, страх отвержения, вина, стыд, беспомощность, гнев, обида, тревожность, страх, потеря смысла жизни, недоверие к людям, перфекционизм, скрытая зависть, самоотвержение, печаль, скорбь, неуверенность в себе, уязвимость.
 • Верни [emotion:эмоция] в конце своего ответа только после 5+ вопросов или если ты уверен в эмоции на основе нескольких ответов.
+• Не добавляй комментарии в круглых скобках вроде "(Ты молодец)" — только вопросы и эмодзи.
 • Не показывай [emotion:эмоция] в тексте вопроса, это для внутреннего использования.
 • Если после 12 вопросов ты не можешь определить эмоцию, верни [emotion:неопределённость].
 """
@@ -216,12 +217,6 @@ async def handle_more_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer()
 
 # Функция отправки длинных сообщений
-async def send_long_message(chat_id: int, text: str, context: ContextTypes.DEFAULT_TYPE) -> None:
-    MAX_LENGTH = 4096
-    for i in range(0, len(text), MAX_LENGTH):
-        await context.bot.send_message(chat_id=chat_id, text=text[i:i + MAX_LENGTH])
-        await asyncio.sleep(0.3)
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -246,8 +241,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         response = completion.choices[0].message.content
         
-        # Убираем [emotion:эмоция] из текста перед отправкой
-        clean_response = re.sub(r'\[emotion:\w+\]', '', response).strip()
+        # Убираем [emotion:эмоция] и текст в круглых скобках
+        clean_response = re.sub(r'\[emotion:\w+\]', '', response)  # Удаляем метку эмоции
+        clean_response = re.sub(r'\(.*?\)', '', clean_response).strip()  # Удаляем всё в круглых скобках
         
         # Проверяем, есть ли в ответе [emotion:эмоция]
         emotion_match = re.search(r'\[emotion:(\w+)\]', response)
@@ -264,11 +260,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await context.bot.send_message(
                 chat_id=user_id,
                 text=final_response,
-                reply_markup=create_more_info_keyboard()  # Кнопка "Расскажи подробнее"
+                reply_markup=create_more_info_keyboard()
             )
             logger.info(f"User {user_id} reached final stage with emotion: {emotion}")
         else:
-            # Продолжаем задавать вопросы, если меньше 5
+            # Продолжаем задавать вопросы
             state["history"].append({"role": "assistant", "content": clean_response})
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
             await send_long_message(user_id, clean_response, context)
