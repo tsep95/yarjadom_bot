@@ -128,11 +128,11 @@ def create_emotion_keyboard() -> InlineKeyboardMarkup:
 def create_start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("Приступим", callback_data="start_talk")]])
 
+def create_more_info_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("Расскажи подробнее 🌼", callback_data="more_info")]])
+
 def create_subscribe_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Расскажи подробнее 🌼", callback_data="more_info")],
-        [InlineKeyboardButton("Оплатить подписку 💳", url=SUBSCRIBE_URL)]
-    ])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("Оплатить подписку 💳", url=SUBSCRIBE_URL)]])
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -245,7 +245,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await context.bot.send_message(
                 chat_id=user_id,
                 text="Что скажешь? 🌼",
-                reply_markup=create_subscribe_keyboard()
+                reply_markup=create_more_info_keyboard()  # Только "Расскажи подробнее"
             )
             logger.info(f"User {user_id} reached final stage with emotion: {emotion}")
         else:
