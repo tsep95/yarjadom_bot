@@ -89,10 +89,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state["history"].append({"role": "user", "content": user_message})
 
     try:
-        # Отправляем промежуточное сообщение перед запросом к API, если не финал
-        if not state["deep_reason_detected"]:
-            thinking_msg = await update.message.reply_text(INTERMEDIATE_MESSAGE)
-            state["last_intermediate_message_id"] = thinking_msg.message_id
+        # Отправляем промежуточное сообщение перед запросом к API для каждого ответа
+        thinking_msg = await update.message.reply_text(INTERMEDIATE_MESSAGE)
+        state["last_intermediate_message_id"] = thinking_msg.message_id
 
         # Выбираем промпт
         if state["deep_reason_detected"]:
@@ -114,7 +113,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["deep_reason_detected"] = True
             assistant_response = assistant_response.replace("[deep_reason_detected]", "").strip()
 
-        # Удаляем промежуточное сообщение, если оно было
+        # Удаляем промежуточное сообщение
         if state["last_intermediate_message_id"]:
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
