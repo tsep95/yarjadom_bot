@@ -14,15 +14,22 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-d08c904a63614b7b9bbe96d08445426a")
 
 # Проверка ключа
-if DEEPSEEK_API_KEY == "YOUR_DEEPSEEK_API_KEY":
-    logger.error("DeepSeek API key не задан! Укажите его в переменной окружения DEEPSEEK_API_KEY.")
-    raise ValueError("DeepSeek API key не задан!")
+if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "YOUR_DEEPSEEK_API_KEY":
+    logger.error("DeepSeek API key не задан или неверный! Укажите его в переменной окружения DEEPSEEK_API_KEY.")
+    raise ValueError("DeepSeek API key не задан или неверный!")
+else:
+    logger.info(f"Используется DeepSeek API key: {DEEPSEEK_API_KEY[:8]}... (скрыта часть ключа)")
 
 # Подключение к DeepSeek API
-client = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com"
-)
+try:
+    client = OpenAI(
+        api_key=DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com"
+    )
+    logger.info("Клиент DeepSeek API успешно инициализирован")
+except Exception as e:
+    logger.error(f"Ошибка инициализации клиента DeepSeek: {e}")
+    raise
 
 # Хранилище состояний пользователей
 user_states = {}
@@ -79,33 +86,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     state = user_states[user_id]
-    # Добавляем сообщение пользователя в историю (без reasoning_content)
     state["history"].append({"role": "user", "content": user_message})
     state["question_count"] += 1
 
     try:
-        # Запрос к DeepSeek API с учётом ограничений параметров
         response = client.chat.completions.create(
-            model="deepseek-reasoner",  # Используем модель с CoT
+            model="deepseek-reasoner",
             messages=state["history"],
-            max_tokens=4096  # Ограничиваем длину ответа (по умолчанию 4K, макс 8K)
+            max_tokens=4096
         )
-
-        # Получаем ответ и цепочку рассуждений
         assistant_response = response.choices[0].message.content
         reasoning_content = response.choices[0].message.reasoning_content
         logger.info(f"CoT для пользователя {user_id}: {reasoning_content}")
 
-        # Извлекаем проблему, если указана
         problem_match = re.search(r"\[problem:([^\]]+)\]", assistant_response)
         problem = problem_match.group(1) if problem_match else "неопределённость"
         clean_response = re.sub(r"\[problem:[^\]]+\]", "", assistant_response).strip()
 
-        # Сохраняем только content в историю (без reasoning_content)
         state["history"].append({"role": "assistant", "content": clean_response})
         state["problems"].append(problem)
 
-        # Проверяем, не пора ли предложить расширенную версию
         if state["problems"].count(problem) >= 3 and "Хочешь, мы разберём это глубже" in clean_response:
             logger.info(f"Пользователь {user_id} готов к расширенной версии, проблема: {problem}")
         await update.message.reply_text(clean_response)
@@ -117,7 +117,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 if __name__ == "__main__":
-    # Создание и запуск бота
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("extended", extended))
