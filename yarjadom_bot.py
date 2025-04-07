@@ -209,6 +209,7 @@ def check_emotion_confidence(emotion_history: list) -> tuple:
     return dominant_emotion, count
 
 # Обработчик сообщений
+# Обработчик сообщений (исправленный)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_chat.id
     user_input = update.message.text
@@ -262,12 +263,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         # Условия завершения
         if emotion_count >= MIN_CONFIRMATION_QUESTIONS and dominant_emotion != "неопределённость":
-            # Завершаем сразу, если достигнут порог в 4 очка
+            # Завершаем сразу при достижении порога в 4 очка
             await finish_conversation(user_id, dominant_emotion, context, state)
+            return  # Прерываем выполнение
         elif state["question_count"] >= state["max_questions"]:
-            # Если 15 вопросов и нет 4 очков, берём эмоцию с максимальным количеством
+            # На 15-м шаге берём эмоцию с максимальным количеством очков
             final_emotion = dominant_emotion if dominant_emotion else "неопределённость"
             await finish_conversation(user_id, final_emotion, context, state)
+            return  # Прерываем выполнение
         else:
             state["history"].append({"role": "assistant", "content": clean_response})
             await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
