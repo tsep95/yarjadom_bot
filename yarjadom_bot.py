@@ -10,12 +10,12 @@ logger = logging.getLogger(__name__)
 
 # Токен Telegram и ключ DeepSeek
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_TOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-d08c904a63614b7b9bbe96d08445426a")
+DEEPSEEK_API_KEY = "sk-d08c904a63614b7b9bbe96d08445426a"  # Ваш ключ
 
 # Проверка ключа
-if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "YOUR_DEEPSEEK_API_KEY":
-    logger.error("DeepSeek API key не задан или неверный!")
-    raise ValueError("DeepSeek API key не задан или неверный!")
+if not DEEPSEEK_API_KEY:
+    logger.error("DeepSeek API key не задан!")
+    raise ValueError("DeepSeek API key не задан!")
 else:
     logger.info(f"Используется DeepSeek API key: {DEEPSEEK_API_KEY[:8]}...")
 
@@ -86,18 +86,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     state = user_states[user_id]
-
-    # Удаляем предыдущее промежуточное сообщение, если оно есть
-    if state["last_intermediate_message_id"]:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
-            state["last_intermediate_message_id"] = None
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение: {e}")
-
     state["history"].append({"role": "user", "content": user_message})
 
     try:
+        # Отправляем промежуточное сообщение перед запросом к API, если не финал
+        if not state["deep_reason_detected"]:
+            thinking_msg = await update.message.reply_text(INTERMEDIATE_MESSAGE)
+            state["last_intermediate_message_id"] = thinking_msg.message_id
+
         # Выбираем промпт
         if state["deep_reason_detected"]:
             system_prompt = FINAL_PROMPT
@@ -118,17 +114,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["deep_reason_detected"] = True
             assistant_response = assistant_response.replace("[deep_reason_detected]", "").strip()
 
+        # Удаляем промежуточное сообщение, если оно было
+        if state["last_intermediate_message_id"]:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
+                state["last_intermediate_message_id"] = None
+            except Exception as e:
+                logger.warning(f"Не удалось удалить сообщение: {e}")
+
         state["history"].append({"role": "assistant", "content": assistant_response})
         await update.message.reply_text(assistant_response)
         logger.info(f"Сообщение для пользователя {user_id}: {assistant_response}")
 
-        # Если диалог продолжается (не финал), отправляем промежуточное сообщение
-        if not state["deep_reason_detected"]:
-            thinking_msg = await update.message.reply_text(INTERMEDIATE_MESSAGE)
-            state["last_intermediate_message_id"] = thinking_msg.message_id
-
     except Exception as e:
         logger.error(f"Ошибка при запросе к DeepSeek API: {e}")
+        # Удаляем промежуточное сообщение в случае ошибки
+        if state["last_intermediate_message_id"]:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
+                state["last_intermediate_message_id"] = None
+            except Exception as e:
+                logger.warning(f"Не удалось удалить сообщение: {e}")
         await update.message.reply_text("Ой, что-то не так 🌿. Давай ещё раз?")
 
 if __name__ == "__main__":
