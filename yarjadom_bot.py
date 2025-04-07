@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Токен Telegram и ключ DeepSeek
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_TOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-d08c904a63614b7b9bbe96d08445426a")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "YOUR_DEEPSEEK_API_KEY")
 
 # Проверка ключа
 if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "YOUR_DEEPSEEK_API_KEY":
@@ -33,8 +33,8 @@ user_states = {}
 # Системные промпты
 BASE_PROMPT = """
 Ты — тёплый, эмпатичный психолог. Общайся коротко, с душой и поддержкой. 
-Цель: углубляться в чувства человека через наводящие вопросы. 
-Задавай один короткий вопрос, копающий глубже в эмоции. 
+Цель: углубляться в чувства через наводящие вопросы. 
+Задавай один короткий вопрос, копающий в эмоции. 
 Используй 1 смайлик (😊, 🌿, ✨, 🤍, ☀️, 🙏). 
 Если выявил глубокую эмоцию или причину (страх, стыд, неуверенность и т.д.), добавь [deep_reason_detected].
 """
@@ -48,6 +48,9 @@ FINAL_PROMPT = """
 Используй 1–2 смайлика (😊, 🌿, ✨, 🤍, ☀️, 🙏).
 """
 
+# Промежуточное сообщение
+INTERMEDIATE_MESSAGE = "Думаю над этим... 🌿"
+
 # Приветственное сообщение
 WELCOME_MESSAGE = "Привет! Я здесь, чтобы выслушать 😊. Что тебя волнует?"
 
@@ -59,7 +62,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_chat.id
     user_states[user_id] = {
         "history": [],
-        "deep_reason_detected": False
+        "deep_reason_detected": False,
+        "last_intermediate_message_id": None
     }
     await update.message.reply_text(WELCOME_MESSAGE)
 
@@ -74,6 +78,7 @@ async def extended(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик текстовых сообщений"""
     user_id = update.effective_chat.id
+    chat_id = update.effective_chat.id
     user_message = update.message.text
 
     if user_id not in user_states:
@@ -81,6 +86,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     state = user_states[user_id]
+
+    # Удаляем предыдущее промежуточное сообщение, если оно есть
+    if state["last_intermediate_message_id"]:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
+            state["last_intermediate_message_id"] = None
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение: {e}")
+
     state["history"].append({"role": "user", "content": user_message})
 
     try:
@@ -107,6 +121,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state["history"].append({"role": "assistant", "content": assistant_response})
         await update.message.reply_text(assistant_response)
         logger.info(f"Сообщение для пользователя {user_id}: {assistant_response}")
+
+        # Если диалог продолжается (не финал), отправляем промежуточное сообщение
+        if not state["deep_reason_detected"]:
+            thinking_msg = await update.message.reply_text(INTERMEDIATE_MESSAGE)
+            state["last_intermediate_message_id"] = thinking_msg.message_id
 
     except Exception as e:
         logger.error(f"Ошибка при запросе к DeepSeek API: {e}")
