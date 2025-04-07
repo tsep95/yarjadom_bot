@@ -1,6 +1,5 @@
 import os
 import re
-import random
 from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
@@ -50,7 +49,7 @@ KEYWORDS = {
 }
 
 CONFIDENCE_THRESHOLD = 0.75  # Порог уверенности для завершения
-MIN_CONFIRMATION_QUESTIONS = 5  # Минимальное количество вопросов для подтверждения
+MIN_CONFIRMATION_QUESTIONS = 6  # Минимальное количество вопросов для подтверждения
 
 # Обновлённый системный промпт
 SYSTEM_PROMPT = """
@@ -176,7 +175,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "dominant_emotion": None,
         "emotion_scores": {emotion: 0 for emotion in THERAPY_METHODS.keys()},
         "min_questions": 5,  # Фиксированный минимум
-        "max_questions": random.randint(10, 12)  # Максимум от 10 до 12
+        "max_questions": 12  # Фиксированный максимум (убран random)
     }
     await update.message.reply_text(WELCOME_MESSAGE, reply_markup=create_start_keyboard())
 
