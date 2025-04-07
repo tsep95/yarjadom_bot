@@ -215,8 +215,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not state["started"]:
         return  # Ждём нажатия кнопки "Приступим"
 
-    state["history=''
-'].append({"role": "user", "content": user_input})
+    state["history"].append({"role": "user", "content": user_input})
     if len(state["history"]) > 30:  # Храним последние 15 пар вопрос-ответ
         state["history"] = state["history"][-30:]
     state["question_count"] += 1
