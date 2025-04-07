@@ -28,8 +28,7 @@ user_data: Dict[int, dict] = {}
 
 # Обновлённый системный промпт
 SYSTEM_PROMPT = """
-Ты — профессиональный психолог с тёплым, заботливым стилем общения. Твоя задача — помочь человеку понять, что с ним происходит, через мягкий и структурированный диалог минимум из 5 шагов. 
-
+Ты — профессиональный психолог с тёплым, заботливым стилем общения. Твоя задача — помочь человеку понять, что с ним происходит, через мягкий и структурированный диалог минимум из 5 шагов. Отвечай строго по одному шагу за раз, жди ответа пользователя перед следующим шагом.
 Структура работы:
 
 1. Начни разговор с сочувствия, прояви участие и уточни, что именно сейчас тревожит пользователя. Будь деликатным.
@@ -162,7 +161,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     state = user_data[user_id]
     state["history"].append({"role": "user", "content": user_input})
-    state["question_count"] += 1
+    if "step" not in state:
+        state["step"] = 1  # Начинаем с первого шага
+    else:
+        state["step"] += 1  # Переходим к следующему
     
     thinking_msg = await update.message.reply_text("Думаю над этим... 🌿")
     
@@ -174,28 +176,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             temperature=0.7,
             timeout=30
         )
-        response = completion.choices[0].message.content
+        full_response = completion.choices[0].message.content
         
-        logger.info(f"DeepSeek response for user {user_id}: {response}")
+        # Разбиваем ответ на шаги (грубо, но для примера)
+        steps = full_response.split("\n\n")  # Предполагаем, что шаги разделены пустой строкой
+        current_step = min(state["step"] - 1, len(steps) - 1)  # Берём нужный шаг
+        response = steps[current_step]
         
-        # Проверяем количество вопросов и завершаем, если достигнут минимум 5
-        if state["question_count"] >= 5 and "Резюме:" in response:
-            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
-            final_response = f"{response}\n\nЕсли тебе хочется глубже разобраться в этом, я могу быть рядом каждый день — с поддержкой и заботой.\n\n*Если тебе это откликается — попробуй расширенную версию. Я рядом 🤍*"
+        state["history"].append({"role": "assistant", "content": response})
+        await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
+        await send_long_message(user_id, response, context)
+        
+        # Если шаг 5, добавляем приглашение и завершаем
+        if state["step"] >= 5:
+            final_response = f"{response}\n\n*Если тебе это откликается — попробуй расширенную версию. Я рядом 🤍*"
             await context.bot.send_message(
                 chat_id=user_id,
                 text=final_response,
                 reply_markup=create_subscribe_keyboard()
             )
             del user_data[user_id]
-        else:
-            state["history"].append({"role": "assistant", "content": response})
-            await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
-            await send_long_message(user_id, response, context)
         
     except Exception as e:
-        logger.error(f"Ошибка в handle_message для user_id {user_id}: {str(e)}")
-        response = "Что-то пошло не так, и мне жаль, что так вышло.\n\nХочешь попробовать ещё раз? 🌿"
+        logger.error(f"Ошибка: {str(e)}")
+        response = "Что-то пошло не так, давай попробуем ещё? 🌿"
         await context.bot.delete_message(chat_id=user_id, message_id=thinking_msg.message_id)
         await send_long_message(user_id, response, context)
 
