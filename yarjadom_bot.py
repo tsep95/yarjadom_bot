@@ -1,6 +1,6 @@
 import os
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from openai import OpenAI
 import logging
 
@@ -32,16 +32,16 @@ user_states = {}
 
 # Системные промпты
 BASE_PROMPT = """
-Ты — тёплый, эмпатичный психолог. Отвечай контекстно, опираясь на предыдущее сообщение пользователя, без повторных приветствий после первого сообщения. 
-
-Цель: углубляться в чувства через 5 продуманных, бережных вопросов. Задавай по одному вопросу за раз, в зависимости от количества предыдущих ответов (отслеживай по истории). Каждое сообщение должно быть длиной 2-3 строки, как пример: "Да, в тишине и одиночестве чувства особенно громко заявляют о себе... Это так по-человечески 🌱. Как ты думаешь, что это горе пытается тебе сказать? ✨" Вопросы:  
+Ты — тёплый, эмпатичный психолог. Отвечай контекстно, опираясь на предыдущее сообщение пользователя, без повторных приветствий после первого сообщения.  
+Цель: углубляться в чувства через 5 продуманных, бережных вопросов. Задавай по одному вопросу за раз, в зависимости от количества предыдущих ответов (отслеживай по истории).  
+Каждое сообщение — 2-3 строки, например: "Да, в тишине и одиночестве чувства особенно громко заявляют о себе... Это так по-человечески 🌱. Как ты думаешь, что это горе пытается тебе сказать? ✨"  
+Вопросы:  
 1. "Я так тебе сочувствую — это огромная боль 🤍. Что сейчас лежит у тебя на сердце? 🌱"  
 2. "Это чувство такое глубокое 🙏. Когда ты впервые заметил его? ☀️"  
 3. "Понимаю, как это с тобой 🌿. Где ты его ощущаешь в себе? ✨"  
 4. "Слышу твою боль 🤍. Что оно пытается тебе сказать? 🌱"  
 5. "Это так трогательно ✨. Какие слова оно бы выбрало? 🌿"  
-
-Говори как заботливый друг: мягко, тепло, с поддержкой. Используй тёплые смайлики (🌱, ☀️, 🙏, ✨, 🤍, 🌿). Не добавляй [deep_reason_detected], пока не получишь ответы на все 5 вопросов. После 5-го ответа добавь [deep_reason_detected].
+Говори тепло, с поддержкой, как заботливый друг. Используй смайлики (🌱, ☀️, 🙏, ✨, 🤍, 🌿). После 5-го ответа добавь [deep_reason_detected].
 """
 
 FINAL_PROMPT = """
@@ -53,8 +53,8 @@ FINAL_PROMPT = """
 # Промежуточное сообщение
 INTERMEDIATE_MESSAGE = "Думаю над этим... 🌿"
 
-# Приветственное сообщение
-WELCOME_MESSAGE = "Привет! Я здесь, чтобы выслушать тебя и поддержать — ты в надёжных руках 🤍. Что тебя волнует? 😊"
+# Приветственное сообщение с кнопкой
+WELCOME_MESSAGE = "Привет! Я здесь, чтобы выслушать и мягко поддержать тебя 🤍. Готов поговорить о том, что волнует?"
 
 # Сообщение для расширенной версии
 EXTENDED_MESSAGE = "Спасибо, что поделился! 🌿 Теперь можем глубже разобраться. Я рядом 🤍."
@@ -64,10 +64,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_chat.id
     user_states[user_id] = {
         "history": [],
+        "question_count": 0,
         "deep_reason_detected": False,
         "last_intermediate_message_id": None
     }
-    await update.message.reply_text(WELCOME_MESSAGE)
+    # Клавиатура с кнопкой "Приступим"
+    keyboard = [[InlineKeyboardButton("Приступим", callback_data="start_conversation")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(WELCOME_MESSAGE, reply_markup=reply_markup)
+
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик нажатия кнопки"""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if query.data == "start_conversation":
+        await query.edit_message_text("Хорошо, я с тобой 🤍. Что сейчас лежит у тебя на сердце? 🌱")
+        user_states[user_id]["question_count"] = 1
 
 async def extended(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /extended"""
@@ -89,14 +102,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = user_states[user_id]
     state["history"].append({"role": "user", "content": user_message})
+    state["question_count"] += 1
 
     try:
-        # Отправляем промежуточное сообщение перед запросом к API
+        # Отправляем промежуточное сообщение
         thinking_msg = await update.message.reply_text(INTERMEDIATE_MESSAGE)
         state["last_intermediate_message_id"] = thinking_msg.message_id
 
         # Выбираем промпт
-        if state["deep_reason_detected"]:
+        if state["question_count"] > 5:
             system_prompt = FINAL_PROMPT
         else:
             system_prompt = BASE_PROMPT
@@ -104,7 +118,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Формируем сообщения
         messages = [{"role": "system", "content": system_prompt}] + state["history"]
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek-chat,
             messages=messages,
             max_tokens=4096
         )
@@ -140,6 +154,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button))
     app.add_handler(CommandHandler("extended", extended))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("Бот запущен!")
