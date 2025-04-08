@@ -118,7 +118,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Формируем сообщения
         messages = [{"role": "system", "content": system_prompt}] + state["history"]
         response = client.chat.completions.create(
-            model="deepseek-chat,
+            model="deepseek-chat",
             messages=messages,
             max_tokens=4096
         )
