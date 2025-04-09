@@ -3,25 +3,18 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from openai import OpenAI
 import logging
-from dotenv import load_dotenv  # Для работы с .env
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Загрузка переменных из .env
-load_dotenv()
-
-# Получение ключей из переменных окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Проверка наличия ключей
 if not OPENAI_API_KEY:
     logger.error("OpenAI API key не задан!")
     raise ValueError("OpenAI API key не задан!")
 else:
-    logger.info(f"Используется OpenAI API key: {OPENAI_API_KEY[:8]}... (длина: {len(OPENAI_API_KEY)})")
+    logger.info(f"Используется OpenAI API key: {OPENAI_API_KEY[:8]}...")
 
 if not TELEGRAM_TOKEN:
     logger.error("Telegram token не задан!")
@@ -29,7 +22,6 @@ if not TELEGRAM_TOKEN:
 else:
     logger.info(f"Используется Telegram token: {TELEGRAM_TOKEN[:8]}...")
 
-# Инициализация клиента OpenAI
 try:
     client = OpenAI(api_key=OPENAI_API_KEY)
     logger.info("Клиент OpenAI API успешно инициализирован")
@@ -37,10 +29,8 @@ except Exception as e:
     logger.error(f"Ошибка инициализации клиента OpenAI: {e}")
     raise
 
-# Словарь для хранения состояний пользователей
 user_states = {}
 
-# Промпты
 BASE_PROMPT = """
 Ты — тёплый, эмпатичный собеседник. Отвечай контекстно, опираясь на предыдущее сообщение пользователя, без повторных приветствий.  
 Цель: мягко углубляться в чувства через вопросы (максимум 3 за раз), чтобы понять, что тревожит человека. Первый вопрос уже задан: "Отлично, что ты решился начать — это уже маленький шаг к тому, чтобы стало легче. Я здесь, чтобы выслушать тебя и помочь разобраться в том, что творится внутри. Мы пойдём шаг за шагом, без спешки, чтобы ты мог почувствовать себя лучше. Что беспокоит тебя больше всего прямо сейчас?"  
@@ -86,7 +76,6 @@ SOS-помощь в трудные моменты.
 499 ₽ в месяц. Первая неделя — бесплатно.
 """
 
-# Обработчики Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_chat.id
     user_states[user_id] = {
@@ -180,7 +169,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["last_intermediate_message_id"] = None
         await update.message.reply_text(f"Ой, что-то не так 🌿. Ошибка: {str(e)}. Давай ещё раз?")
 
-# Запуск бота
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
