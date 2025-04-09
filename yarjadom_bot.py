@@ -4,33 +4,27 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from openai import OpenAI
 import logging
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Токен Telegram и ключ OpenAI
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7836790011:AAFmXqCA9gmvSo80lZJnyYreejOIJeX129Y")  # Заменил на твой токен из логов
 OPENAI_API_KEY = "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"
 
-# Проверка ключа
 if not OPENAI_API_KEY:
     logger.error("OpenAI API key не задан!")
     raise ValueError("OpenAI API key не задан!")
 else:
     logger.info(f"Используется OpenAI API key: {OPENAI_API_KEY[:8]}...")
 
-# Подключение к OpenAI API
 try:
-    client = OpenAI(api_key=OPENAI_API_KEY)  # Убираем base_url, так как используем стандартный OpenAI API
+    client = OpenAI(api_key=OPENAI_API_KEY)
     logger.info("Клиент OpenAI API успешно инициализирован")
 except Exception as e:
     logger.error(f"Ошибка инициализации клиента OpenAI: {e}")
     raise
 
-# Хранилище состояний пользователей
 user_states = {}
 
-# Системные промпты
 BASE_PROMPT = """
 Ты — тёплый, эмпатичный собеседник. Отвечай контекстно, опираясь на предыдущее сообщение пользователя, без повторных приветствий.  
 Цель: мягко углубляться в чувства через вопросы (максимум 3 за раз), чтобы понять, что тревожит человека. Первый вопрос уже задан: "Отлично, что ты решился начать — это уже маленький шаг к тому, чтобы стало легче. Я здесь, чтобы выслушать тебя и помочь разобраться в том, что творится внутри. Мы пойдём шаг за шагом, без спешки, чтобы ты мог почувствовать себя лучше. Что беспокоит тебя больше всего прямо сейчас?"  
@@ -137,7 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         messages = [{"role": "system", "content": system_prompt}] + state["history"]
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Новая модель
+            model="gpt-4o-mini",
             messages=messages,
             max_tokens=4096
         )
@@ -163,11 +157,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Сообщение для пользователя {user_id}: {assistant_response}")
 
     except Exception as e:
-        logger.error(f"Ошибка при запросе к OpenAI API: {e}")
+        logger.error(f"Ошибка при запросе к OpenAI API: {str(e)}")
         if state["last_intermediate_message_id"]:
             await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
             state["last_intermediate_message_id"] = None
-        await update.message.reply_text("Ой, что-то не так 🌿. Давай ещё раз?")
+        await update.message.reply_text(f"Ой, что-то не так 🌿. Ошибка: {str(e)}. Давай ещё раз?")
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
