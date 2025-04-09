@@ -7,8 +7,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7836790011:AAFmXqCA9gmvSo80lZJnyYreejOIJeX129Y")  # Заменил на твой токен из логов
-OPENAI_API_KEY = "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"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Заменил на твой токен из логов
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
     logger.error("OpenAI API key не задан!")
