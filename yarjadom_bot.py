@@ -4,29 +4,24 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from openai import OpenAI
 import logging
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Токен Telegram и ключ OpenAI с fallback-значениями
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7836790011:AAFmXqCA9gmvSo80lZJnyYreejOIJeX129Y")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "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")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "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")  # Вставь новый ключ сюда
 
-# Проверка ключа OpenAI
 if not OPENAI_API_KEY:
     logger.error("OpenAI API key не задан!")
     raise ValueError("OpenAI API key не задан!")
 else:
     logger.info(f"Используется OpenAI API key: {OPENAI_API_KEY[:8]}...")
 
-# Проверка Telegram-токена
 if not TELEGRAM_TOKEN:
     logger.error("Telegram token не задан!")
     raise ValueError("Telegram token не задан!")
 else:
     logger.info(f"Используется Telegram token: {TELEGRAM_TOKEN[:8]}...")
 
-# Подключение к OpenAI API
 try:
     client = OpenAI(api_key=OPENAI_API_KEY)
     logger.info("Клиент OpenAI API успешно инициализирован")
@@ -34,10 +29,8 @@ except Exception as e:
     logger.error(f"Ошибка инициализации клиента OpenAI: {e}")
     raise
 
-# Хранилище состояний пользователей
 user_states = {}
 
-# Системные промпты
 BASE_PROMPT = """
 Ты — тёплый, эмпатичный собеседник. Отвечай контекстно, опираясь на предыдущее сообщение пользователя, без повторных приветствий.  
 Цель: мягко углубляться в чувства через вопросы (максимум 3 за раз), чтобы понять, что тревожит человека. Первый вопрос уже задан: "Отлично, что ты решился начать — это уже маленький шаг к тому, чтобы стало легче. Я здесь, чтобы выслушать тебя и помочь разобраться в том, что творится внутри. Мы пойдём шаг за шагом, без спешки, чтобы ты мог почувствовать себя лучше. Что беспокоит тебя больше всего прямо сейчас?"  
