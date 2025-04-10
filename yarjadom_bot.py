@@ -52,13 +52,13 @@ BASE_PROMPT = """
 4. Побуждай к рефлексии и осмыслению внутреннего мира.
 5. Исследуй корни эмоциональных переживаний.
 6. Поддерживай пользователя в раскрытии чувств.
-7. Подведи небольшой итог, сохраняя тепло и заботу.
+7. Задай последний вопрос, чтобы подвести к завершению.
 
-Диалог должен состоять ровно из 7 сообщений от тебя, после чего ты завершаешь беседу. Избегай поспешных выводов и дай человеку время открыться. Если пользователь раскрывает глубокие эмоции (например, страх, грусть, стыд, одиночество, боль, потерю), добавь в конец ответа тег [DEEP_EMOTION_DETECTED].
+После начального сообщения ты должен задать ровно 7 вопросов, а затем завершить диалог финальным сообщением. Избегай поспешных выводов и дай человеку время открыться. Если пользователь раскрывает глубокие эмоции (например, страх, грусть, стыд, одиночество, боль, потерю), добавь в конец ответа тег [DEEP_EMOTION_DETECTED].
 """
 
 FINAL_PROMPT = """
-Ты — заботливый психолог-бот «Я рядом» 🤝. Это твоё седьмое сообщение в диалоге. Заверши беседу, подведя итог всему разговору так, чтобы поддержать пользователя и помочь ему принять свои эмоции. Отметь, что вы прошли 7 этапов: от поверхностных чувств до глубоких переживаний и их осмысления.
+Ты — заботливый психолог-бот «Я рядом» 🤝. Это твоё восьмое сообщение в диалоге после начального. Заверши беседу, подведя итог всему разговору так, чтобы поддержать пользователя и помочь ему принять свои эмоции. Отметь, что вы прошли 7 вопросов, углубляясь от поверхностных чувств до их осмысления.
 
 В финальном сообщении:
 • Подведи итоги беседы, выделив ключевые моменты, которые вы обсудили,
@@ -123,8 +123,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     if query.data == "start_conversation":
         state = user_states[user_id]
-        state["history"].append({"role": "assistant", "content": START_CONVERSATION_MESSAGE})
-        state["message_count"] = 1
+        state["history"].append {"role": "assistant", "content": START_CONVERSATION_MESSAGE})
+        state["message_count"] = 0  # Не считаем начальное сообщение
         await query.edit_message_text(START_CONVERSATION_MESSAGE)
     elif query.data == "tell_me_more":
         keyboard = [[InlineKeyboardButton("Оплатить 💳", url="https://your-payment-link.com")]]
@@ -149,7 +149,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = user_states[user_id]
     if state["dialog_ended"]:
-        await update.message.reply_text("Мы уже прошли наш путь из 7 шагов 🌟. Хочешь узнать больше о поддержке? Нажми 'Расскажи подробнее' выше.")
+        await update.message.reply_text("Мы уже прошли наш путь из 7 вопросов 🌟. Хочешь узнать больше о поддержке? Нажми 'Расскажи подробнее' выше.")
         return
 
     state["history"].append({"role": "user", "content": user_message})
@@ -158,8 +158,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         thinking_msg = await update.message.reply_text(INTERMEDIATE_MESSAGE)
         state["last_intermediate_message_id"] = thinking_msg.message_id
 
-        # Используем FINAL_PROMPT только на 7-м сообщении
-        system_prompt = FINAL_PROMPT if state["message_count"] == 6 else BASE_PROMPT
+        # Используем FINAL_PROMPT только после 7 вопросов (на 8-м сообщении)
+        system_prompt = FINAL_PROMPT if state["message_count"] == 7 else BASE_PROMPT
         messages = [{"role": "system", "content": system_prompt}] + state["history"]
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -171,16 +171,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         deep_emotion_detected = "[DEEP_EMOTION_DETECTED]" in assistant_response
         if deep_emotion_detected:
             state["deep_reason_detected"] = True
-            assistant_response = assistant_response.replace("[DEEP_EMOTION_DETECTED]", "")
-
-        if state["last_intermediate_message_id"]:
-            await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
-            state["last_intermediate_message_id"] = None
+            assistant_response = assistant_response.replace("[DEEP_EMOTION_DETECTrzej): None
 
         state["message_count"] += 1
         state["history"].append({"role": "assistant", "content": assistant_response})
 
-        if state["message_count"] == 7:
+        if state["message_count"] == 8:  # Завершаем после 7 вопросов + финал
             state["dialog_ended"] = True
             keyboard = [[InlineKeyboardButton("Расскажи подробнее", callback_data="tell_me_more")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -188,7 +184,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(assistant_response)
 
-        logger.info(f"Сообщение для пользователя {user_id} ({state['message_count']}/7): {assistant_response}")
+        logger.info(f"Сообщение для пользователя {user_id} ({state['message_count']}/8): {assistant_response}")
 
     except Exception as e:
         logger.error(f"Ошибка при запросе к OpenAI API: {str(e)}")
