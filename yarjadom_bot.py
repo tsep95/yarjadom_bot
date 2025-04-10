@@ -123,7 +123,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     if query.data == "start_conversation":
         state = user_states[user_id]
-        state["history"].append {"role": "assistant", "content": START_CONVERSATION_MESSAGE}
+        state["history"].append({"role": "assistant", "content": START_CONVERSATION_MESSAGE})
         state["message_count"] = 0  # Не считаем начальное сообщение
         await query.edit_message_text(START_CONVERSATION_MESSAGE)
     elif query.data == "tell_me_more":
@@ -171,7 +171,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         deep_emotion_detected = "[DEEP_EMOTION_DETECTED]" in assistant_response
         if deep_emotion_detected:
             state["deep_reason_detected"] = True
-            assistant_response = assistant_response.replace("[DEEP_EMOTION_DETECTrzej): None
+            assistant_response = assistant_response.replace("[DEEP_EMOTION_DETECTED]", "")
+
+        if state["last_intermediate_message_id"]:
+            await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
+            state["last_intermediate_message_id"] = None
 
         state["message_count"] += 1
         state["history"].append({"role": "assistant", "content": assistant_response})
