@@ -123,7 +123,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     if query.data == "start_conversation":
         state = user_states[user_id]
-        state["history"].append {"role": "assistant", "content": START_CONVERSATION_MESSAGE})
+        state["history"].append {"role": "assistant", "content": START_CONVERSATION_MESSAGE}
         state["message_count"] = 0  # Не считаем начальное сообщение
         await query.edit_message_text(START_CONVERSATION_MESSAGE)
     elif query.data == "tell_me_more":
