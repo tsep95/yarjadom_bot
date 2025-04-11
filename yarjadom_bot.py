@@ -3,7 +3,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from openai import OpenAI
 import logging
-import re
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -182,15 +181,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         assistant_response = response.choices[0].message.content
 
+        # Проверяем наличие тега [DEEP_EMOTION_DETECTED]
         deep_emotion_detected = "[DEEP_EMOTION_DETECTED]" in assistant_response
         if deep_emotion_detected:
             state["deep_reason_detected"] = True
             assistant_response = assistant_response.replace("[DEEP_EMOTION_DETECTED]", "")
 
-        # Постобработка только для финального сообщения
-        if state["message_count"] == 5:  # Финальное сообщение
-            # Удаляем видимые звёздочки и применяем жирный текст
-            assistant_response = re.sub(r'\*\*(.*?)\*\*', r'**\1**', assistant_response)
+        # Функция для экранирования специальных символов для MarkdownV2
+        def escape_markdown_v2(text):
+            """Экранирует специальные символы для MarkdownV2, сохраняя ** для жирного шрифта."""
+            chars_to_escape = '_[]()~`>#+-=|{}.!'
+            result = ""
+            i = 0
+            while i < len(text):
+                # Проверяем, не начинается ли с ** для жирного шрифта
+                if i + 1 < len(text) and text[i:i+2] == "**":
+                    result += "**"
+                    i += 2
+                    # Пропускаем текст внутри ** до следующего **
+                    while i < len(text) and (i + 1 >= len(text) or text[i:i+2] != "**"):
+                        result += text[i]
+                        i += 1
+                    if i + 1 < len(text) and text[i:i+2] == "**":
+                        result += "**"
+                        i += 2
+                else:
+                    # Экранируем специальные символы
+                    if text[i] in chars_to_escape:
+                        result += "\\" + text[i]
+                    else:
+                        result += text[i]
+                    i += 1
+            return result
 
         if state["last_intermediate_message_id"]:
             await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
@@ -203,8 +225,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["dialog_ended"] = True
             keyboard = [[InlineKeyboardButton("Расскажи подробнее", callback_data="tell_me_more")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(assistant_response, reply_markup=reply_markup, parse_mode='Markdown')
+            # Экранируем специальные символы для финального сообщения
+            escaped_response = escape_markdown_v2(assistant_response)
+            await update.message.reply_text(
+                escaped_response,
+                reply_markup=reply_markup,
+                parse_mode='MarkdownV2'  # Используем MarkdownV2 для финального сообщения
+            )
         else:
+            # Для нефинальных сообщений отправляем без Markdown
             await update.message.reply_text(assistant_response)
 
         logger.info(f"Сообщение для пользователя {user_id} ({state['message_count']}/6): {assistant_response}")
