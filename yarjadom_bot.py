@@ -38,13 +38,32 @@ except Exception as e:
 user_states = {}
 
 # Функция для экранирования специальных символов в MarkdownV2
-def escape_markdown(text):
-    # Определяем все зарезервированные символы в MarkdownV2 Telegram
-    reserved_chars = r'_*\[\]\(\)~`>#\+-=|{}\.\!\\'
-    # Создаем шаблон для поиска любого из этих символов
-    pattern = re.compile(f'([{reserved_chars}])')
-    # Заменяем каждый совпадение на '\\' + найденный символ
-    return pattern.sub(r'\\\1', text)
+def escape_markdown_with_bold(text: str) -> str:
+    """
+    Преобразует выделение важного текста, записанного как *текст*,
+    в MarkdownV2 формат жирного текста с двойными звёздочками **текст**,
+    затем экранирует все спецсимволы для MarkdownV2, за исключением символов жирного выделения.
+    """
+    # Сначала заменяем *text* на **text**
+    text = re.sub(r'\*(.*?)\*', r'**\1**', text)
+    
+    # Разбиваем строку по блокам, заключённым в **, чтобы не экранировать маркеры жирности
+    segments = re.split(r'(\*\*.*?\*\*)', text)
+    
+    # Список спецсимволов для экранирования (исключаем *, так как он используется в **bold**)
+    reserved_chars = r'_ \[\]\(\)~`>#\+-=|{}\.\!\\'
+    # Обратите внимание: пробел после _ добавлен для корректности шаблона
+    # Экранируем символы только в сегментах, не являющихся жирными блоками
+    escaped_segments = []
+    for segment in segments:
+        if segment.startswith("**") and segment.endswith("**"):
+            # Оставляем без изменений
+            escaped_segments.append(segment)
+        else:
+            seg_escaped = re.sub(rf'([{reserved_chars}])', r'\\\1', segment)
+            escaped_segments.append(seg_escaped)
+    
+    return ''.join(escaped_segments)
 
 # Промпты
 BASE_PROMPT = """
@@ -210,8 +229,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Экранируем специальные символы для MarkdownV2 только для финального сообщения
         if state["message_count"] == 5:
-            assistant_response = escape_markdown(assistant_response)
-            logger.info(f"Экранированный текст финального сообщения: {assistant_response}")
+    # Обработка финального сообщения с выделением важного текста жирным
+    assistant_response = escape_markdown_with_bold(assistant_response)
+    logger.info(f"Экранированный текст финального сообщения: {assistant_response}")
+    keyboard = [[InlineKeyboardButton("Расскажи подробнее", callback_data="tell_me_more")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=assistant_response,
+        parse_mode="MarkdownV2",
+        reply_markup=reply_markup
+    )
+
 
         if state["last_intermediate_message_id"]:
             await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
