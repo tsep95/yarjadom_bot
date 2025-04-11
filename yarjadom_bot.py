@@ -38,18 +38,18 @@ user_states = {}
 
 # Функция для экранирования специальных символов в MarkdownV2
 def escape_markdown(text):
-    """Экранирует специальные символы для MarkdownV2, корректно обрабатывая точки."""
-    chars_to_escape = '_[]()~`>#+-=|{}!'
+    """Экранирует специальные символы для MarkdownV2, включая точки."""
+    chars_to_escape = '_[]()~`>#+-=|{}!.\\'
     result = ""
     i = 0
     while i < len(text):
+        char = text[i]
+        # Пропускаем форматирование **жирный текст**
         if i + 1 < len(text) and text[i:i+2] == "**":
             result += "**"
             i += 2
-            while i < len(text) and (i + 1 >= len(text) or text[i:i+2] != "**"):
+            while i < len(text) and text[i:i+2] != "**":
                 if text[i] in chars_to_escape:
-                    result += "\\" + text[i]
-                elif text[i] == '.' and (i + 1 < len(text) and text[i+1] not in [' ', '\n', ''] and not text[i-1].encode().isalnum()):
                     result += "\\" + text[i]
                 else:
                     result += text[i]
@@ -57,14 +57,18 @@ def escape_markdown(text):
             if i + 1 < len(text) and text[i:i+2] == "**":
                 result += "**"
                 i += 2
-        else:
-            if text[i] in chars_to_escape:
-                result += "\\" + text[i]
-            elif text[i] == '.' and (i + 1 < len(text) and text[i+1] not in [' ', '\n', ''] and not text[i-1].encode().isalnum()):
-                result += "\\" + text[i]
+            continue
+        # Экранируем точку, если она не в конце предложения и не после смайлика
+        if char == '.':
+            if i + 1 < len(text) and text[i+1] not in [' ', '\n'] and not text[i-1].encode().isalnum() == False:
+                result += "\\."
             else:
-                result += text[i]
-            i += 1
+                result += "."
+        elif char in chars_to_escape:
+            result += "\\" + char
+        else:
+            result += char
+        i += 1
     return result
 
 # Промпты
