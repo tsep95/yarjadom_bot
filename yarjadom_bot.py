@@ -36,44 +36,24 @@ except Exception as e:
 # Словарь для хранения состояний пользователей
 user_states = {}
 
-# Функция для экранирования специальных символов в Markdown
-def escape_markdown(text, is_final_message=False):
+# Функция для экранирования специальных символов только для финального сообщения
+def escape_markdown_for_final(text):
     """
-    Экранирует специальные символы для Markdown, сохраняя * для выделения в финальном сообщении.
-    Если is_final_message=True, избегает лишнего экранирования точек, запятых и т.д.
+    Экранирует специальные символы для Markdown в финальном сообщении,
+    сохраняя * для жирного текста и избегая экранирования точек, запятых и т.д.
     """
-    if is_final_message:
-        # Для финального сообщения сохраняем * и экранируем только конфликтующие символы
-        chars_to_escape = ['_', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '!']
-    else:
-        # Для обычных сообщений экранируем больше символов, но сохраняем **
-        chars_to_escape = ['_', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-
+    chars_to_escape = ['_', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '!']
     result = ""
     i = 0
     while i < len(text):
-        if not is_final_message and i + 1 < len(text) and text[i:i+2] == "**":
-            # Сохраняем ** для выделения в обычных сообщениях
-            result += "**"
-            i += 2
-            while i < len(text) and (i + 1 >= len(text) or text[i:i+2] != "**"):
-                if text[i] in chars_to_escape:
-                    result += "\\" + text[i]
-                else:
-                    result += text[i]
-                i += 1
-            if i + 1 < len(text) and text[i:i+2] == "**":
-                result += "**"
-                i += 2
-        elif is_final_message and text[i] == '*':
-            # Сохраняем * для жирного текста в финальном сообщении
+        if i + 1 < len(text) and text[i] == '*' and text[i+1] != ' ':  # Сохраняем * для жирного текста
             result += text[i]
             i += 1
+        elif text[i] in chars_to_escape:
+            result += "\\" + text[i]
+            i += 1
         else:
-            if text[i] in chars_to_escape:
-                result += "\\" + text[i]
-            else:
-                result += text[i]
+            result += text[i]
             i += 1
     return result
 
@@ -236,14 +216,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["deep_reason_detected"] = True
             assistant_response = assistant_response.replace("[DEEP_EMOTION_DETECTED]", "")
 
+        # Обрабатываем текст в зависимости от типа сообщения
         if state["message_count"] == 5:  # Финальное сообщение
-            # Экранируем только необходимые символы, сохраняя Markdown
-            assistant_response = escape_markdown(assistant_response, is_final_message=True)
-            # Логируем экранированный текст для отладки
-            logger.info(f"Экранированный текст финального сообщения: {assistant_response}")
+            # Экранируем только для Markdown, сохраняя * для жирного текста
+            processed_response = escape_markdown_for_final(assistant_response)
+            # Логируем обработанный текст для отладки
+            logger.info(f"Обработанный текст финального сообщения: {processed_response}")
         else:
-            # Для нефинальных сообщений используем обычное экранирование
-            assistant_response = escape_markdown(assistant_response, is_final_message=False)
+            # Для обычных сообщений не экранируем, отправляем как есть
+            processed_response = assistant_response
+            logger.info(f"Текст обычного сообщения (без экранирования): {processed_response}")
 
         if state["last_intermediate_message_id"]:
             await context.bot.delete_message(chat_id=chat_id, message_id=state["last_intermediate_message_id"])
@@ -256,17 +238,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["dialog_ended"] = True
             keyboard = [[InlineKeyboardButton("Расскажи подробнее", callback_data="tell_me_more")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=assistant_response,
-                parse_mode="Markdown",  # Используем Markdown для финального сообщения
-                reply_markup=reply_markup
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=processed_response,
+                    parse_mode="Markdown",  # Markdown только для финального сообщения
+                    reply_markup=reply_markup
+                )
+            except Exception as e:
+                logger.error(f"Ошибка отправки Markdown: {str(e)}")
+                # Отправляем без Markdown как запасной вариант
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=processed_response,
+                    reply_markup=reply_markup
+                )
         else:
             # Для нефинальных сообщений отправляем без Markdown
-            await update.message.reply_text(assistant_response)
+            await update.message.reply_text(
+                text=processed_response,
+                parse_mode=None  # Отключаем Markdown для обычных сообщений
+            )
 
-        logger.info(f"Сообщение для пользователя {user_id} ({state['message_count']}/6): {assistant_response}")
+        logger.info(f"Сообщение для пользователя {user_id} ({state['message_count']}/6): {processed_response}")
 
     except Exception as e:
         logger.error(f"Ошибка при запросе к OpenAI API: {str(e)}")
