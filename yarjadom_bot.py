@@ -37,7 +37,6 @@ except Exception as e:
 user_states = {}
 
 # Функция для экранирования специальных символов в Markdown
-def escape_markdown(text):
 def escape_markdown(text, is_final_message=False):
     """
     Экранирует специальные символы для Markdown, сохраняя * для выделения в финальном сообщении.
