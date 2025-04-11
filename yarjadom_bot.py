@@ -39,7 +39,7 @@ user_states = {}
 
 # Функция для экранирования специальных символов в Markdown
 def escape_markdown(text):
-    """Экранирует специальные символы для MarkdownV2, сохраняя * для выделения и не экранируя точки."""
+    """Экранирует специальные символы для MarkdownV2, сохраняя * для выделения и корректно обрабатывая точки."""
     chars_to_escape = '_[]()~`>#+-=|{}!'
     result = ""
     i = 0
@@ -50,6 +50,8 @@ def escape_markdown(text):
             while i < len(text) and (i + 1 >= len(text) or text[i:i+2] != "**"):
                 if text[i] in chars_to_escape:
                     result += "\\" + text[i]
+                elif text[i] == '.' and i + 1 < len(text) and text[i+1] not in [' ', '\n', '']:
+                    result += "\\" + text[i]
                 else:
                     result += text[i]
                 i += 1
@@ -58,6 +60,8 @@ def escape_markdown(text):
                 i += 2
         else:
             if text[i] in chars_to_escape:
+                result += "\\" + text[i]
+            elif text[i] == '.' and i + 1 < len(text) and text[i+1] not in [' ', '\n', '']:
                 result += "\\" + text[i]
             else:
                 result += text[i]
