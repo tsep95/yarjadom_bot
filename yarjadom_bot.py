@@ -198,9 +198,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if i + 1 < len(text) and text[i:i+2] == "**":
                     result += "**"
                     i += 2
-                    # Пропускаем текст внутри ** до следующего **
+                    # Пропускаем текст внутри ** до следующего **, экранируя специальные символы
                     while i < len(text) and (i + 1 >= len(text) or text[i:i+2] != "**"):
-                        result += text[i]
+                        if text[i] in chars_to_escape:
+                            result += "\\" + text[i]
+                        else:
+                            result += text[i]
                         i += 1
                     if i + 1 < len(text) and text[i:i+2] == "**":
                         result += "**"
@@ -227,6 +230,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             # Экранируем специальные символы для финального сообщения
             escaped_response = escape_markdown_v2(assistant_response)
+            # Логируем экранированный текст для отладки
+            logger.info(f"Экранированный текст финального сообщения: {escaped_response}")
             await update.message.reply_text(
                 escaped_response,
                 reply_markup=reply_markup,
