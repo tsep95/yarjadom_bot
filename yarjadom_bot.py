@@ -230,16 +230,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Экранируем специальные символы для MarkdownV2 только для финального сообщения
         if state["message_count"] == 5:
     # Обработка финального сообщения с выделением важного текста жирным
-    assistant_response = escape_markdown_with_bold(assistant_response)
-    logger.info(f"Экранированный текст финального сообщения: {assistant_response}")
-    keyboard = [[InlineKeyboardButton("Расскажи подробнее", callback_data="tell_me_more")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=assistant_response,
-        parse_mode="MarkdownV2",
-        reply_markup=reply_markup
-    )
+            assistant_response = escape_markdown_with_bold(assistant_response)
+            logger.info(f"Экранированный текст финального сообщения: {assistant_response}")
+            keyboard = [[InlineKeyboardButton("Расскажи подробнее", callback_data="tell_me_more")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=assistant_response,
+                parse_mode="MarkdownV2",
+                reply_markup=reply_markup
+            )
 
 
         if state["last_intermediate_message_id"]:
