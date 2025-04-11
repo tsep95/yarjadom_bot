@@ -41,29 +41,31 @@ user_states = {}
 def escape_markdown_with_bold(text: str) -> str:
     """
     Преобразует выделение важного текста, записанного как *текст*,
-    в MarkdownV2 формат жирного текста с двойными звёздочками **текст**,
-    затем экранирует все спецсимволы для MarkdownV2, за исключением символов жирного выделения.
+    в MarkdownV2 формат жирного текста с двойными звёздочками (**текст**),
+    затем экранирует все спецсимволы для MarkdownV2, за исключением маркеров жирного выделения.
     """
-    # Сначала заменяем *text* на **text**
-    text = re.sub(r'\*(.*?)\*', r'**\1**', text)
+    # Сначала заменяем *текст* на временные плейсхолдеры, чтобы не экранировать их
+    bold_pattern = r'\*(.*?)\*'
+    placeholders = {}
     
-    # Разбиваем строку по блокам, заключённым в **, чтобы не экранировать маркеры жирности
-    segments = re.split(r'(\*\*.*?\*\*)', text)
+    def bold_replacer(match):
+        placeholder = f"{{{{BOLD_{len(placeholders)}}}}}"
+        placeholders[placeholder] = f"**{match.group(1)}**"
+        return placeholder
+
+    text = re.sub(bold_pattern, bold_replacer, text)
+
+    # Экранируем спецсимволы для MarkdownV2.
+    # Зарезервированные символы (исключая *, так как он уже обработан):
+    # _ [ ] ( ) ~ ` > # + = | { } . ! \ -
+    # Помещаем '-' в конец символьного класса, чтобы он не трактовался как диапазон.
+    text = re.sub(r'([_\[\]()~`>#+=|{}\.!\\\-])', r'\\\1', text)
     
-    # Список спецсимволов для экранирования (исключаем *, так как он используется в **bold**)
-    reserved_chars = r'_ \[\]\(\)~`>#\+-=|{}\.\!\\'
-    # Обратите внимание: пробел после _ добавлен для корректности шаблона
-    # Экранируем символы только в сегментах, не являющихся жирными блоками
-    escaped_segments = []
-    for segment in segments:
-        if segment.startswith("**") and segment.endswith("**"):
-            # Оставляем без изменений
-            escaped_segments.append(segment)
-        else:
-            seg_escaped = re.sub(rf'([{reserved_chars}])', r'\\\1', segment)
-            escaped_segments.append(seg_escaped)
+    # Восстанавливаем жирное форматирование из плейсхолдеров
+    for placeholder, bold_text in placeholders.items():
+        text = text.replace(placeholder, bold_text)
     
-    return ''.join(escaped_segments)
+    return text
 
 # Промпты
 BASE_PROMPT = """
