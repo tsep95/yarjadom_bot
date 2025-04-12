@@ -97,8 +97,7 @@ def escape_markdown_for_final(text):
 # Функция для постобработки финального сообщения
 def postprocess_final_message(text, key_moments, emotion, state):
     """
-    Гарантирует правильные абзацы и выделение жирным двух ключевых моментов,
-    эмоции, терапии и 'расширенная версия'.
+    Гарантирует правильные абзацы, один метод терапии, выделение жирным и структуру из 5 абзацев.
     """
     # Определяем метод терапии на основе эмоции
     therapy_info = THERAPY_MAPPING.get(emotion.lower(), {
@@ -111,6 +110,30 @@ def postprocess_final_message(text, key_moments, emotion, state):
     # Сохраняем терапию в состоянии
     state["therapy"] = therapy
 
+    # Удаляем упоминания других методов терапии
+    for other_therapy in [t["method"] for t in THERAPY_MAPPING.values() if t["method"] != therapy]:
+        text = re.sub(rf'\*{re.escape(other_therapy)}\*', other_therapy, text)
+        text = re.sub(rf'\b{re.escape(other_therapy)}\b', other_therapy, text)
+
+    # Разбиваем текст на абзацы
+    lines = text.split('\n')
+    paragraphs = []
+    current_paragraph = []
+    for line in lines:
+        line = line.strip()
+        if line:
+            current_paragraph.append(line)
+        else:
+            if current_paragraph:
+                paragraphs.append(' '.join(current_paragraph))
+                current_paragraph = []
+    if current_paragraph:
+        paragraphs.append(' '.join(current_paragraph))
+
+    # Гарантируем 5 абзацев
+    while len(paragraphs) < 5:
+        paragraphs.append("")
+    
     # Проверяем и исправляем выделение жирным
     for moment in key_moments:
         if f"*{moment}*" not in text:
@@ -126,32 +149,16 @@ def postprocess_final_message(text, key_moments, emotion, state):
         logger.warning("Фраза 'расширенная версия' не выделена жирным, исправляем...")
         text = re.sub(r'расширенная версия', '*расширенная версия*', text, count=1)
 
-    # Разбиваем на абзацы
-    lines = text.split('\n')
-    paragraphs = []
-    current_paragraph = []
-    for line in lines:
-        line = line.strip()
-        if line:
-            current_paragraph.append(line)
-        else:
-            if current_paragraph:
-                paragraphs.append(' '.join(current_paragraph))
-                current_paragraph = []
-    if current_paragraph:
-        paragraphs.append(' '.join(current_paragraph))
+    # Формируем 4-й абзац с терапией
+    paragraphs[3] = f"Подойдёт *{therapy}* — она {therapy_reason} Ты можешь стать счастливее, и я верю в тебя 💛."
 
-    # Формируем текст с явными абзацами
+    # Формируем 5-й абзац
+    paragraphs[4] = ("Если хочешь глубже разобраться, переходи в *расширенная версия* 🚀. "
+                     "Мы будем искать ответы вместе, находя тепло и радость каждый день 🌞. "
+                     "Я всегда рядом — твой спутник на пути к счастью 🌈.")
+
+    # Обновляем текст с учётом исправлений
     structured_text = '\n\n'.join(paragraphs)
-    
-    # Проверяем, чтобы терапия и причина были в тексте
-    if therapy not in structured_text:
-        logger.warning(f"Добавляем информацию о терапии: {therapy}")
-        if len(paragraphs) >= 4:
-            paragraphs[3] = f"Подойдёт *{therapy}* — она {therapy_reason} Ты можешь стать счастливее, и я верю в тебя 💛."
-        else:
-            paragraphs.append(f"Подойдёт *{therapy}* — она {therapy_reason} Ты можешь стать счастливее, и я верю в тебя 💛.")
-        structured_text = '\n\n'.join(paragraphs)
 
     return structured_text
 
