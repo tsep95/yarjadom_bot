@@ -247,7 +247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         system_prompt = FINAL_PROMPT if state["message_count"] == 5 else BASE_PROMPT
         messages = [{"role": "system", "content": system_prompt}] + state["history"]
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o mini",
             messages=messages,
             max_tokens=4096
         )
